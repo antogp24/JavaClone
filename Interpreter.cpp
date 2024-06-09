@@ -1,20 +1,102 @@
 #include "Interpreter.h"
 #include "Error.h"
+#include "AstPrinter.h"
 
 #if defined(_DEBUG) && (defined(_WIN32) || defined(_WIN64))
 	#include <stdlib.h>
 	#include <crtdbg.h>
+	#define DBG_new new (_NORMAL_BLOCK, __FILE__, __LINE__)
+#else
+	#define DBG_new new
 #endif
 
-void Interpreter::interpret(Expr *expression) {
+
+Interpreter::Interpreter() {
+	globals = DBG_new Environment();
+	environment = globals;
+}
+
+Interpreter::~Interpreter() {
+	delete globals;
+}
+
+void Interpreter::interpret(std::vector<Stmt*>* statements) {
 	try {
-		JavaObject value = evaluate(expression);
-		printf("Result: ");
-		java_object_print(value);
-		printf("\n\n");
+		for (int i = 0; i < statements->size(); i++) {
+			execute_statement(statements->at(i));
+		}
 	}
 	catch (JavaRuntimeError error) {
 		JavaError::runtime_error(error);
+	}
+}
+
+void Interpreter::execute_block(const std::vector<Stmt*>& statements, Environment* environment) {
+	Environment* previous = this->environment;
+	this->environment = environment;
+
+	for (int i = 0; i < statements.size(); i++) {
+		execute_statement(statements.at(i));
+	}
+
+	delete environment;
+	this->environment = previous;
+}
+
+void Interpreter::execute_statement(Stmt* statement) {
+	switch (statement->get_type()) {
+		case StmtType::block: {
+			Stmt_Block* stmt = dynamic_cast<Stmt_Block*>(statement);
+			execute_block(stmt->statements, DBG_new Environment(environment));
+		} break;
+		case StmtType::expression: { 
+			Stmt_Expression* stmt = dynamic_cast<Stmt_Expression*>(statement);
+			AstPrinter::println("Expression Ast: ", (Expr*)stmt->expression);
+			JavaObject value = evaluate((Expr*)stmt->expression);
+			printf("Expression statement result: ");
+			java_object_print(value);
+			expression_free((Expr*)stmt->expression);
+			stmt->expression = nullptr;
+			printf("\n\n");
+		} break;
+		case StmtType::print: { 
+			Stmt_Print* stmt = dynamic_cast<Stmt_Print*>(statement);
+			AstPrinter::println("Print Ast: ", (Expr*)stmt->expression);
+			JavaObject value = evaluate((Expr*)stmt->expression);
+			java_object_print(value);
+			expression_free((Expr*)stmt->expression);
+			stmt->expression = nullptr;
+			if (stmt->has_newline) printf("\n");
+		} break;
+		case StmtType::var: {
+			Stmt_Var* stmt = dynamic_cast<Stmt_Var*>(statement);
+			JavaObject value = { JavaType::_null, JavaValue{} };
+
+			if (stmt->initializer != nullptr) {
+				value = evaluate((Expr*)stmt->initializer);
+
+				if (is_token_type_number(stmt->type.type) && !is_java_type_number(value.type) ||
+				   !is_token_type_number(stmt->type.type) && is_java_type_number(value.type))
+				{
+					throw JAVA_RUNTIME_ERROR(stmt->type, "Can't do an implicit cast between '%s' and '%s'.", java_type_cstring(value.type), stmt->type.lexeme);
+				}
+			}
+			value.type = token_type_to_java_type(stmt->type.type);
+			environment->define(stmt, value);
+
+			printf("Defined %s ", stmt->is_static ? "static" : "non static");
+			printf("(%s %s) ", stmt->is_final ? "final" : "var", stmt->name.lexeme);
+			printf("of type (%s) with visibility ", stmt->type.lexeme);
+			printf("%s", visibility_to_cstring(stmt->visibility));
+			if (stmt->initializer != nullptr) {
+				JavaObject value = evaluate((Expr*)stmt->initializer);
+				printf(" initialized with ");
+				java_object_print(value);
+				expression_free((Expr*)stmt->initializer);
+				stmt->initializer = nullptr;
+			}
+			printf("\n");
+		} break;
 	}
 }
 
@@ -23,8 +105,12 @@ JavaObject Interpreter::evaluate_binary(Expr* expression) {
 	JavaObject lhs = evaluate((Expr*)expr->left);
 	JavaObject rhs = evaluate((Expr*)expr->right);
 
-	JavaType type = java_get_bigger_type(lhs, rhs);
-	JavaObject result = { type, JavaValue{} };
+	JavaType smaller = java_get_smaller_type(lhs, rhs);
+	JavaType bigger = java_get_bigger_type(lhs, rhs);
+	JavaObject result = { bigger, JavaValue{} };
+
+	// Runtime errors reported on the operators.
+	#define op_error(message) throw JAVA_RUNTIME_ERROR(expr->_operator, message)
 
 	// These are intended for numbers.
 	#define case_binary(T, op)                                               \
@@ -33,30 +119,30 @@ JavaObject Interpreter::evaluate_binary(Expr* expression) {
 		} break;
 
 	// Used for division and remainder.
-	#define case_binary_right_not_zero(T, op)                                              \
-		case JavaType::##T: {                                                              \
-			Java##T right = java_cast_to##T(rhs);                                          \
-			if (right == 0) {                                                              \
-				throw JavaRuntimeError(expr->_operator, "Right hand side can't be zero");  \
-			}                                                                              \
-			result.value.##T = java_cast_to##T(lhs) op right;                              \
+	#define case_binary_right_not_zero(T, op)                  \
+		case JavaType::##T: {                                  \
+			Java##T right = java_cast_to##T(rhs);              \
+			if (right == 0) {                                  \
+				op_error("Right hand side can't be zero");     \
+			}                                                  \
+			result.value.##T = java_cast_to##T(lhs) op right;  \
 		} break;
 
 	// In case macro replace 'case_binary' or 'case_binary_right_non_zero'
-	#define case_op(op, T, case_macro)                                         \
-		case TokenType::##T: {                                                 \
-			switch (type) {                                                    \
-				case_macro(_byte, op)                                          \
-				case_macro(_int, op)                                           \
-				case_macro(_long, op)                                          \
-				case_macro(_float, op)                                         \
-				case_macro(_double, op)                                        \
-				default: {                                                     \
-					throw JavaRuntimeError(expr->_operator, "Only numbers.");  \
-				}                                                              \
-			}                                                                  \
-			return result;                                                     \
-		}
+	#define case_op(op, T, case_macro)               \
+		case TokenType::##T: {                       \
+			if (smaller < JavaType::_byte)           \
+			    op_error("Only numbers");            \
+			switch (bigger) {                        \
+				case_macro(_byte, op)                \
+				case_macro(_int, op)                 \
+				case_macro(_long, op)                \
+				case_macro(_float, op)               \
+				case_macro(_double, op)              \
+				default: op_error("Only numbers.");  \
+			}                                        \
+			return result;                           \
+		} break;
 
 	// Intended for operators with boolean results.
 	#define case_binary_bool(T, op)                                               \
@@ -66,34 +152,35 @@ JavaObject Interpreter::evaluate_binary(Expr* expression) {
 		} break;
 
 	// Intended for operators with boolean results.
-	#define case_op_bool(op, T)                                                \
-		case TokenType::##T: {                                                 \
-			switch (type) {                                                    \
-				case_binary_bool(_byte, op)                                    \
-				case_binary_bool(_int, op)                                     \
-				case_binary_bool(_long, op)                                    \
-				case_binary_bool(_float, op)                                   \
-				case_binary_bool(_double, op)                                  \
-				default: {                                                     \
-					throw JavaRuntimeError(expr->_operator, "Only numbers.");  \
-				}                                                              \
-			}                                                                  \
-			return result;                                                     \
-		}
+	#define case_op_bool(op, T)                      \
+		case TokenType::##T: {                       \
+			if (smaller < JavaType::_byte)           \
+			    op_error("Only numbers");            \
+			switch (bigger) {                        \
+				case_binary_bool(_byte, op)          \
+				case_binary_bool(_char, op)          \
+				case_binary_bool(_int, op)           \
+				case_binary_bool(_long, op)          \
+				case_binary_bool(_float, op)         \
+				case_binary_bool(_double, op)        \
+				default: op_error("Only numbers.");  \
+			}                                        \
+			return result;                           \
+		} break;
 
 	// Same thing but for whole numbers.
-	#define case_op_whole(op, T, case_macro)                                                     \
-		case TokenType::##T: {                                                                   \
-			switch (type) {                                                                      \
-				case_macro(_byte, op)                                                            \
-				case_macro(_int, op)                                                             \
-				case_macro(_long, op)                                                            \
-				default: {                                                                       \
-					throw JavaRuntimeError(expr->_operator, "Only non floating point numbers."); \
-				}                                                                                \
-			}                                                                                    \
-			return result;                                                                       \
-		}
+	#define case_op_whole(op, T, case_macro)               \
+		case TokenType::##T: {                             \
+			if (smaller < JavaType::_byte)                 \
+			    op_error("Only numbers");                  \
+			switch (bigger) {                              \
+				case_macro(_byte, op)                      \
+				case_macro(_int, op)                       \
+				case_macro(_long, op)                      \
+				default: op_error("Only whole numbers.");  \
+			}                                              \
+			return result;                                 \
+		} break;
 
 	// Actually calling those crazy macros to generate the code.
 	switch (expr->_operator.type) {
@@ -116,6 +203,7 @@ JavaObject Interpreter::evaluate_binary(Expr* expression) {
 	}
 
 	// These crazy macros are only for this code.
+	#undef op_error
 	#undef case_binary
 	#undef case_binary_right_non_zero
 	#undef case_binary_bool
@@ -130,71 +218,95 @@ JavaObject Interpreter::evaluate_unary(Expr* expression) {
 	Expr_Unary* expr = dynamic_cast<Expr_Unary*>(expression);
 	JavaObject right = evaluate((Expr*)expr->right);
 
+	// Runtime errors reported on the operators.
+	#define op_error(message) throw JAVA_RUNTIME_ERROR(expr->_operator, message)
+
 	// This is intended for numbers and booleans.
 	#define case_unary(op, T)                                          \
 		case JavaType::##T: {                                          \
 			result.value.##T = result.value.##T = op right.value.##T;  \
 		} break;
 
-	switch (expr->_operator.type) {
-		case TokenType::minus: {
-			JavaObject result = { right.type, JavaValue{} };
-			switch (right.type) {
-				case_unary(-, _byte)
-				case_unary(-, _int)
-				case_unary(-, _long)
-				case_unary(-, _float)
-				case_unary(-, _double)
-				default: {
-					throw JavaRuntimeError(expr->_operator, "Only numbers");
-				}
-			}
-			return result;
+	// The same but the result is the right. Useful for ++ and --.
+	#define case_unary_no_return(op, T) case JavaType::##T: op right.value.##T; break;
+
+	// This is intended for numbers.
+	#define case_op_unary(op, T)                              \
+		case TokenType::##T: {                                \
+			JavaObject result = { right.type, JavaValue{} };  \
+			switch (right.type) {                             \
+				case_unary(op, _byte)                         \
+				case_unary(op, _int)                          \
+				case_unary(op, _long)                         \
+				case_unary(op, _float)                        \
+				case_unary(op, _double)                       \
+				default: op_error("Only numbers");            \
+			}                                                 \
+			return result;                                    \
+		} break;
+
+	// The same but the result is the right. Useful for ++ and --.
+	#define case_op_unary_no_return(op, T)          \
+		case TokenType::##T: {                      \
+			switch (right.type) {                   \
+				case_unary_no_return(op, _byte)     \
+				case_unary_no_return(op, _int)      \
+				case_unary_no_return(op, _long)     \
+				case_unary_no_return(op, _float)    \
+				case_unary_no_return(op, _double)   \
+				default: op_error("Only numbers");  \
+			}                                       \
+			return right;                           \
 		}
+
+	// This is intended for whole numbers.
+	#define case_op_unary_whole(op, T)                        \
+		case TokenType::##T: {                                \
+			JavaObject result = { right.type, JavaValue{} };  \
+			switch (right.type) {                             \
+				case_unary(op, _byte)                         \
+				case_unary(op, _int)                          \
+				case_unary(op, _long)                         \
+				default: op_error("Only whole numbers");      \
+			}                                                 \
+			return result;                                    \
+		} break;
+
+	// Actual code calling some of the macros.
+	switch (expr->_operator.type) {
+		case_op_unary(-, minus)
+		case_op_unary_whole(~, bitwise_not)
+		case_op_unary_no_return(++, plus_plus)
+		case_op_unary_no_return(--, minus_minus)
 
 		case TokenType::_not: {
 			JavaObject result = { JavaType::_boolean, JavaValue{} };
-			switch (right.type) {
-				case_unary(!, _boolean)
-				default: {
-					throw JavaRuntimeError(expr->_operator, "Only booleans.");
-				}
-			}
+			if (right.type != JavaType::_boolean) op_error("Only booleans.");
+			result.value._boolean = !right.value._boolean;
 			return result;
-		}
+		} break;
 
-		case TokenType::bitwise_not: {
-			JavaObject result = { right.type, JavaValue{} };
-			switch (right.type) {
-				case_unary(~, _byte)
-				case_unary(~, _int)
-				case_unary(~, _long)
-				default: {
-					throw JavaRuntimeError(expr->_operator, "Only whole numbers.");
-				}
-			}
-			return result;
-		}
-
+		// Macros for casting operations.
 		#define case_cast(T) case_unary((Java##T), T)
-		#define case_cast_number(T)                                                         \
-			case TokenType::type##T: {                                                      \
-				JavaObject result = { JavaType::##T, JavaValue{} };                         \
-				switch (right.type) {                                                       \
-					case_cast(_boolean)                                                     \
-					case_cast(_byte)                                                        \
-					case_cast(_char)                                                        \
-					case_cast(_int)                                                         \
-					case_cast(_long)                                                        \
-					case_cast(_float)                                                       \
-					case_cast(_double)                                                      \
-					default: {                                                              \
-						throw JavaRuntimeError(expr->_operator, "Type must be a number.");  \
-					}                                                                       \
-				}                                                                           \
-				return result;                                                              \
+		#define case_cast_number(T)                                                           \
+			case TokenType::type##T: {                                                        \
+				JavaObject result = { JavaType::##T, JavaValue{} };                           \
+				switch (right.type) {                                                         \
+					case_cast(_boolean)                                                       \
+					case_cast(_byte)                                                          \
+					case_cast(_char)                                                          \
+					case_cast(_int)                                                           \
+					case_cast(_long)                                                          \
+					case_cast(_float)                                                         \
+					case_cast(_double)                                                        \
+					default: {                                                                \
+						throw JAVA_RUNTIME_ERROR(expr->_operator, "Type must be a number.");  \
+					}                                                                         \
+				}                                                                             \
+				return result;                                                                \
 			}
 
+		// Calling the cast operation macros.
 		case_cast_number(_boolean)
 		case_cast_number(_byte)
 		case_cast_number(_char)
@@ -203,7 +315,13 @@ JavaObject Interpreter::evaluate_unary(Expr* expression) {
 		case_cast_number(_float)
 		case_cast_number(_double)
 
+		// Those crazy macros exist only for this code.
+		#undef op_error
 		#undef case_unary
+		#undef case_unary_no_return
+		#undef case_op_unary
+		#undef case_op_unary_no_return
+		#undef case_op_unary_whole
 		#undef case_cast
 		#undef case_cast_number
 	}
@@ -216,7 +334,7 @@ JavaObject Interpreter::evaluate_logical(Expr* expression) {
 
 	JavaObject lhs = evaluate((Expr*)expr->left);
 	if (lhs.type != JavaType::_boolean) {
-		throw JavaRuntimeError(expr->_operator, "Expected boolean operand on the left hand side.");
+		throw JAVA_RUNTIME_ERROR(expr->_operator, "Expected boolean operand on the left hand side.");
 	}
 
 	switch (expr->_operator.type) {
@@ -227,9 +345,9 @@ JavaObject Interpreter::evaluate_logical(Expr* expression) {
 			else {
 				JavaObject rhs = evaluate((Expr*)expr->right);
 				if (rhs.type != JavaType::_boolean) {
-					throw JavaRuntimeError(expr->_operator, "Expected boolean operand on the right hand side.");
+					throw JAVA_RUNTIME_ERROR(expr->_operator, "Expected boolean operand on the right hand side.");
 				}
-				result.value._boolean = lhs.value._boolean || rhs.value._boolean;
+				result.value._boolean = rhs.value._boolean;
 			}
 		} break;
 
@@ -240,9 +358,9 @@ JavaObject Interpreter::evaluate_logical(Expr* expression) {
 			else {
 				JavaObject rhs = evaluate((Expr*)expr->right);
 				if (rhs.type != JavaType::_boolean) {
-					throw JavaRuntimeError(expr->_operator, "Expected boolean operand on the right hand side.");
+					throw JAVA_RUNTIME_ERROR(expr->_operator, "Expected boolean operand on the right hand side.");
 				}
-				result.value._boolean = lhs.value._boolean && rhs.value._boolean;
+				result.value._boolean = rhs.value._boolean;
 			}
 		} break;
 	}
@@ -253,6 +371,13 @@ JavaObject Interpreter::evaluate(Expr* expression) {
 	if (expression == nullptr) return JavaObject{ JavaType::none, JavaValue{} };
 
 	switch (expression->get_type()) {
+		case ExprType::assign: {
+			Expr_Assign* expr = dynamic_cast<Expr_Assign*>(expression);
+			JavaObject value = evaluate((Expr*)expr->rhs);
+			environment->assign(expr->lhs_name, value);
+			return value;
+		} break;
+
 		case ExprType::binary: {
 			return evaluate_binary(expression);
 		} break;
@@ -262,8 +387,18 @@ JavaObject Interpreter::evaluate(Expr* expression) {
 			return expr->literal;
 		} break;
 
+		case ExprType::ternary: {
+			Expr_Ternary* expr = dynamic_cast<Expr_Ternary*>(expression);
+			JavaObject condition = evaluate((Expr*)expr->condition);
+			if (condition.type != JavaType::_boolean) {
+				throw JAVA_RUNTIME_ERROR(expr->question_mark, "Only booleans.");
+			}
+			if (condition.value._boolean) return evaluate((Expr*)expr->then);
+			return evaluate((Expr*)expr->otherwise);
+		} break;
+
 		case ExprType::logical: {
-			return evaluate_logical((Expr*)expression);
+			return evaluate_logical(expression);
 		} break;
 
 		case ExprType::grouping: {
@@ -274,6 +409,11 @@ JavaObject Interpreter::evaluate(Expr* expression) {
 		case ExprType::unary: {
 			return evaluate_unary(expression);
 		} break;
+
+		case ExprType::variable: {
+			Expr_Variable* expr = dynamic_cast<Expr_Variable*>(expression);
+			return environment->get(expr->name);
+		} break;
 	}
 
 	return JavaObject{ JavaType::none, JavaValue{} };
@@ -283,5 +423,5 @@ void Interpreter::check_number_operands(const JavaObject& lhs, const Token& _ope
 	if (is_java_type_number(lhs.type) && is_java_type_number(rhs.type)) {
 		return;
 	}
-	throw JavaRuntimeError(_operator, "Expected number operands.");
+	throw JAVA_RUNTIME_ERROR(_operator, "Expected number operands.");
 }

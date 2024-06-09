@@ -1,5 +1,6 @@
 #include "Parser.h"
 #include "Error.h"
+#include "AstPrinter.h"
 
 #include <stdarg.h>
 
@@ -30,6 +31,140 @@ Expr *Parser::parse_expression() {
 	}
 }
 
+std::vector<Stmt*>* Parser::parse_statements() {
+	std::vector<Stmt*>* statements = DBG_new std::vector<Stmt*>();
+
+	while (!is_at_end()) {
+		try {
+			statements->emplace_back(declaration());
+		}
+		catch (Error error) {
+			(void)error;
+			delete statements;
+			synchronize();
+			return nullptr;
+		}
+	}
+
+	return statements;
+}
+
+void Parser::statements_free(std::vector<Stmt*>* statements) {
+	if (statements == nullptr) return;
+	for (int i = 0; i < statements->size(); i++) {
+		statement_free(statements->at(i));
+	}
+	delete statements;
+}
+
+Stmt* Parser::declaration() {
+	if (match_java_type()) return var_declaration(previous(), Visibility::Package, false, false);
+	if (match_any_modifier()) return complex_var_declaration(previous().type);
+
+	return statement();
+}
+
+Stmt* Parser::complex_var_declaration(TokenType first_modifier) {
+	enum { STATIC = 0, VISIBILITY, FINAL, COUNT };
+	size_t counts[COUNT] = {0};
+
+	// If there is a visibility modifier, which one it is?
+	Visibility visibility = Visibility::Package;
+	if (is_token_type_visibility(first_modifier)) {
+		visibility = visibility_from_token_type(previous().type);
+	}
+
+	auto hash = [this](TokenType type) { 
+		switch (type) {
+			case TokenType::_static:    return STATIC;
+			case TokenType::_public:  // falltrough
+			case TokenType::_private: // falltrough
+			case TokenType::_protected: return VISIBILITY;
+			case TokenType::_final:     return FINAL;
+		}
+		throw error(previous(), "Expected a valid entry in the counts array.");
+	};
+	auto check_counts = [this](size_t counts[COUNT]) {
+		if ((counts[STATIC] > 1) ||  (counts[VISIBILITY] > 1) || (counts[FINAL] > 1)) {
+			throw error(previous(), "Modifiers must appear only once.");
+		}
+	};
+
+	counts[hash(first_modifier)] = 1;
+
+	if (!check(TokenType::identifier)) {
+		while (!is_at_end() && !check_java_type()) {
+			if (match_any_modifier()) {
+				if (is_token_type_visibility(previous().type)) {
+					visibility = visibility_from_token_type(previous().type);
+				}
+				counts[hash(previous().type)] += 1;
+				check_counts(counts);
+			}
+			else if (!check_java_type()) {
+				throw error(peek(), "Unexpected token in the modifiers.");
+			}
+		}
+	}
+
+	if (!check_java_type()) {
+		throw error(previous(), "Expected type after the modifiers.");
+	}
+	Token type = advance();
+
+	return var_declaration(type, visibility, counts[STATIC] == 1, counts[FINAL] == 1);
+}
+
+Stmt* Parser::var_declaration(Token type, Visibility visibility, bool is_static, bool is_final) {
+	Token name = consume(TokenType::identifier, "Expect variable name.");
+
+	Expr* initializer = nullptr;
+	if (match(TokenType::equal)) {
+		initializer = parse_expression();
+	}
+
+	if (!check(TokenType::semicolon)) {
+		if (initializer != nullptr) expression_free(initializer);
+		throw error(previous(), "Expected ';' after variable declaration.");
+	}
+	advance();
+
+	return DBG_new Stmt_Var{type, name, initializer, visibility, is_static, is_final};
+}
+
+Stmt* Parser::statement() {
+	if (match(TokenType::sout)) return print_statement(false);
+	if (match(TokenType::soutln)) return print_statement(true);
+	if (match(TokenType::curly_left)) return block_statement();
+
+	return expression_statement();
+}
+
+Stmt* Parser::print_statement(const bool has_newline) {
+	consume(TokenType::paren_left, "Expect '(' before value.");
+	Expr* value = parse_expression();
+	consume(TokenType::paren_right, value, "Expect ')' after value.");
+	consume(TokenType::semicolon, value, "Expect ';' after value.");
+	return DBG_new Stmt_Print(value, has_newline);
+}
+
+Stmt* Parser::expression_statement() {
+	Expr* value = parse_expression();
+	consume(TokenType::semicolon, value, "Expect ';' after value.");
+	return DBG_new Stmt_Expression(value);
+}
+
+Stmt* Parser::block_statement() {
+	std::vector<Stmt*> statements = {};
+
+	while (!check(TokenType::curly_right) && !is_at_end()) {
+		statements.emplace_back(declaration());
+	}
+
+	consume(TokenType::curly_right, statements, "Expect '}' at the end of the block.");
+	return DBG_new Stmt_Block{ statements };
+}
+
 Expr* Parser::expression() {
 	return comma_operator();
 }
@@ -49,10 +184,15 @@ Expr* Parser::ternary_conditional() {
 	Expr *expr = assignment();
 
 	if (match(TokenType::question)) {
+		Token question_mark = previous();
+		if (is_at_end()) {
+			expression_free(expr);
+			throw error(question_mark, "Expected then branch after '?' in ternary.");
+		}
 		Expr *then = expression();
-		consume(TokenType::colon, "Expected ':' after then branch in ternary operator.");
+		consume(TokenType::colon, expr, then, "Expected ':' after then branch in ternary operator.");
 		Expr *otherwise = ternary_conditional();
-		expr = DBG_new Expr_Ternary{ expr, then, otherwise };
+		expr = DBG_new Expr_Ternary{ expr, then, otherwise, question_mark };
 	}
 
 	return expr;
@@ -76,7 +216,9 @@ Expr* Parser::assignment() {
 			}
 		}
 
-		error(equals, "Invalid assignment target.");
+		expression_free(expr);
+		expression_free(rhs);
+		throw error(equals, "Invalid assignment target.");
 	}
 
 	return expr;
@@ -202,7 +344,7 @@ Expr *Parser::factor() {
 }
 
 Expr *Parser::unary() {
-	if (match(3, TokenType::_not, TokenType::minus, TokenType::bitwise_not)) {
+	if (match(5, TokenType::_not, TokenType::minus, TokenType::bitwise_not, TokenType::plus_plus, TokenType::minus_minus)) {
 		Token _operator = previous();
 		Expr* right = unary();
 		return DBG_new Expr_Unary{_operator, right};
@@ -240,18 +382,22 @@ Expr* Parser::call() {
 			if (!check(TokenType::paren_right)) {
 				do {
 					if (arguments->size() >= 255) {
-						error(peek(), "Can't have more than 255 arguments.");
+						expression_free(expr);
+						for (int i = 0; i < arguments->size(); i++)
+							expression_free(arguments->at(i));
+						delete arguments;
+						throw error(peek(), "Can't have more than 255 arguments.");
 					}
 					// Always call 1 level of precedence above the comma operator.
 					Expr* argument_expr = ternary_conditional();
 					arguments->emplace_back(argument_expr);
 				} while (match(TokenType::comma));
 			}
-			Token paren = consume(TokenType::paren_right, "Expected ')' after function call.");
+			Token paren = consume(TokenType::paren_right, expr, arguments, "Expected ')' after function call.");
 			expr = DBG_new Expr_Call{expr, paren, arguments};
 		}
 		else if (match(TokenType::dot)) {
-			Token name = consume(TokenType::identifier, "Expected property name after '.'.");
+			Token name = consume(TokenType::identifier, expr, "Expected property name after '.'.");
 			expr = DBG_new Expr_Get{expr, name};
 		}
 		else {
@@ -344,6 +490,72 @@ Token Parser::consume(TokenType type, const char* fmt, ...) {
 	va_end(ap);
 }
 
+Token Parser::consume(TokenType type, Expr* to_free, const char* fmt, ...) {
+	if (check(type)) return advance();
+
+	expression_free(to_free);
+	va_list ap;
+	va_start(ap, fmt);
+	throw error(peek(), fmt, ap);
+	va_end(ap);
+}
+
+Token Parser::consume(TokenType type, Expr* to_free, std::vector<Expr*> *to_free_list, const char* fmt, ...) {
+	if (check(type)) return advance();
+
+	expression_free(to_free);
+	if (to_free_list != nullptr) {
+		for (int i = 0; i < to_free_list->size(); i++) {
+			expression_free(to_free_list->at(i));
+		}
+		delete to_free_list;
+	}
+	va_list ap;
+	va_start(ap, fmt);
+	throw error(peek(), fmt, ap);
+	va_end(ap);
+}
+
+Token Parser::consume(TokenType type, Expr* to_free_0, Expr* to_free_1, const char* fmt, ...) {
+	if (check(type)) return advance();
+
+	expression_free(to_free_0);
+	expression_free(to_free_1);
+	va_list ap;
+	va_start(ap, fmt);
+	throw error(peek(), fmt, ap);
+	va_end(ap);
+}
+
+Token Parser::consume(TokenType type, const std::vector<Stmt*> &to_free, const char* fmt, ...) {
+	if (check(type)) return advance();
+
+	for (int i = 0; i < to_free.size(); i++) {
+		statement_free(to_free.at(i));
+	}
+
+	va_list ap;
+	va_start(ap, fmt);
+	throw error(peek(), fmt, ap);
+	va_end(ap);
+}
+
+bool Parser::match_any_modifier() {
+	bool any = check(TokenType::_static)    ||
+			   check(TokenType::_final)     ||
+			   check(TokenType::_public)    ||
+			   check(TokenType::_private)   ||
+			   check(TokenType::_protected);
+	if (any) advance();
+	return any;
+}
+
+bool Parser::match_java_type() {
+	bool is_type = check_java_type();
+	if (is_type) advance();
+	return is_type;
+}
+
 bool Parser::match(TokenType type) {
 	if (check(type)) {
 		advance();
@@ -368,6 +580,20 @@ bool Parser::match(size_t n, ...) {
 	return false;
 }
 
+
+bool Parser::check_java_type() {
+	if (is_at_end()) return false;
+	return peek().type == TokenType::type_boolean ||
+		   peek().type == TokenType::type_byte    ||
+	       peek().type == TokenType::type_char    || 
+	       peek().type == TokenType::type_int     || 
+	       peek().type == TokenType::type_long    || 
+	       peek().type == TokenType::type_float   || 
+	       peek().type == TokenType::type_double  || 
+	       peek().type == TokenType::type_String  || 
+	       peek().type == TokenType::type_ArrayList;
+}
+
 bool Parser::check(TokenType type) {
 	if (is_at_end()) return false;
 	return peek().type == type;
@@ -384,6 +610,10 @@ inline bool Parser::is_at_end() {
 
 inline Token Parser::peek() {
 	return tokens[current];
+}
+
+inline Token Parser::peek_next() {
+	return tokens[current + 1];
 }
 
 inline Token Parser::previous() {

@@ -17,9 +17,7 @@ enum class ExprType {
 	variable,
 };
 
-struct Expr {
-	virtual inline ExprType get_type() = 0;
-};
+struct Expr { virtual inline ExprType get_type() = 0; };
 
 void expression_free(Expr *expr);
 
@@ -32,12 +30,9 @@ struct Expr_Assign : public Expr {
 		lhs(_lhs),
 		lhs_name(_lhs_name),
 		rhs(_rhs)
-	{
-	}
+	{}
 
-	inline ExprType get_type() override {
-		return ExprType::assign;
-	}
+	inline ExprType get_type() override { return ExprType::assign; }
 };
 
 struct Expr_Binary : public Expr {
@@ -49,12 +44,9 @@ struct Expr_Binary : public Expr {
 		left(_left),
 		_operator(__operator),
 		right(_right)
-	{
-	}
+	{}
 
-	inline ExprType get_type() override {
-		return ExprType::binary;
-	}
+	inline ExprType get_type() override { return ExprType::binary; }
 };
 
 struct Expr_Call : public Expr {
@@ -66,12 +58,9 @@ struct Expr_Call : public Expr {
 		callee(_callee),
 		paren(_paren),
 		arguments(_arguments)
-	{
-	}
+	{}
 
-	inline ExprType get_type() override {
-		return ExprType::call;
-	}
+	inline ExprType get_type() override { return ExprType::call; }
 };
 
 struct Expr_Get : public Expr {
@@ -81,12 +70,9 @@ struct Expr_Get : public Expr {
 	Expr_Get(const Expr* _object, const Token _name):
 		object(_object),
 		name(_name)
-	{
-	}
+	{}
 
-	inline ExprType get_type() override {
-		return ExprType::get;
-	}
+	inline ExprType get_type() override { return ExprType::get; }
 };
 
 struct Expr_Grouping : public Expr {
@@ -94,12 +80,9 @@ struct Expr_Grouping : public Expr {
 
 	Expr_Grouping(const Expr* _expression):
 		expression(_expression)
-	{
-	}
+	{}
 
-	inline ExprType get_type() override {
-		return ExprType::grouping;
-	}
+	inline ExprType get_type() override { return ExprType::grouping; }
 };
 
 struct Expr_Literal : public Expr{
@@ -107,12 +90,9 @@ struct Expr_Literal : public Expr{
 
 	Expr_Literal(JavaObject _literal):
 		literal(_literal)
-	{
-	}
+	{}
 
-	inline ExprType get_type() override {
-		return ExprType::literal;
-	}
+	inline ExprType get_type() override { return ExprType::literal; }
 };
 
 struct Expr_Logical : public Expr {
@@ -124,12 +104,9 @@ struct Expr_Logical : public Expr {
 		left(_left),
 		_operator(__operator),
 		right(_right)
-	{
-	}
+	{}
 
-	inline ExprType get_type() override {
-		return ExprType::logical;
-	}
+	inline ExprType get_type() override { return ExprType::logical; }
 };
 
 struct Expr_Set : public Expr {
@@ -141,29 +118,25 @@ struct Expr_Set : public Expr {
 		lhs(_lhs),
 		lhs_after_dot_name(lhs_2),
 		rhs(_rhs)
-	{
-	}
+	{}
 
-	inline ExprType get_type() override {
-		return ExprType::set;
-	}
+	inline ExprType get_type() override { return ExprType::set; }
 };
 
 struct Expr_Ternary : public Expr {
 	const Expr *condition;
 	const Expr *then;
 	const Expr *otherwise;
+	const Token question_mark;
 
-	Expr_Ternary(const Expr* _condition, const Expr* _then, const Expr* _otherwise):
+	Expr_Ternary(const Expr* _condition, const Expr* _then, const Expr* _otherwise, const Token _question_mark):
 		condition(_condition),
 		then(_then),
-		otherwise(_otherwise)
-	{
-	}
+		otherwise(_otherwise),
+		question_mark(_question_mark)
+	{}
 
-	inline ExprType get_type() override {
-		return ExprType::ternary;
-	}
+	inline ExprType get_type() override { return ExprType::ternary; }
 };
 
 struct Expr_Unary : public Expr {
@@ -173,12 +146,9 @@ struct Expr_Unary : public Expr {
 	Expr_Unary(const Token __operator, const Expr* _right) :
 		_operator(__operator),
 		right(_right)
-	{
-	}
+	{}
 
-	inline ExprType get_type() override {
-		return ExprType::unary;
-	}
+	inline ExprType get_type() override { return ExprType::unary; }
 };
 
 struct Expr_Variable : public Expr {
@@ -188,11 +158,8 @@ struct Expr_Variable : public Expr {
 	Expr_Variable(const Token _name, const bool _is_function) :
 		name(_name),
 		is_function(_is_function)
-	{
-	}
+	{}
 
-	inline ExprType get_type() override {
-		return ExprType::variable;
-	}
+	inline ExprType get_type() override { return ExprType::variable; }
 };
 

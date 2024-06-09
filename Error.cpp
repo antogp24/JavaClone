@@ -24,7 +24,8 @@ void JavaError::error(uint32_t line, uint32_t column, const char* fmt, ...) {
 }
 
 void JavaError::error(const Token &token, const char* fmt, ...) {
-	printf(COLOR_CYN"Error at '%s' on [%u:%u]: ", token.lexeme, token.line, token.column);
+	char* error_point = token.lexeme != NULL ? token.lexeme : (char*)get_token_type_name(token.type);
+	printf(COLOR_CYN"Error at '%s' on [%u:%u]: ", error_point, token.line, token.column);
 
 	va_list args;
 	__crt_va_start(args, fmt);
@@ -36,11 +37,7 @@ void JavaError::error(const Token &token, const char* fmt, ...) {
 }
 
 void JavaError::runtime_error(const JavaRuntimeError &error) {
-	printf(COLOR_CYN"Error at '%s' on [%u:%u]: ", error.token.lexeme, error.token.line, error.token.column);
-
-	va_list args = error.args;
-	(void)_vfprintf_l(stdout, error.fmt, NULL, args);
-
+	printf(COLOR_CYN"Error at '%s' on [%u:%u]: %s", error.token.lexeme, error.token.line, error.token.column, error.message);
 	ERROR_MSG_END;
 	had_runtime_error = true;
 }

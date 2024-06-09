@@ -130,6 +130,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Arena.cpp" />
+    <ClCompile Include="Environment.cpp" />
     <ClCompile Include="Error.cpp" />
     <ClCompile Include="Expr.cpp" />
     <ClCompile Include="FolderReader.cpp" />
@@ -138,12 +139,15 @@
     <ClCompile Include="Lexer.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="Parser.cpp" />
+    <ClCompile Include="Stmt.cpp" />
     <ClCompile Include="Token.cpp" />
+    <ClCompile Include="Visibility.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Arena.h" />
     <ClInclude Include="AstPrinter.h" />
     <ClInclude Include="Color.h" />
+    <ClInclude Include="Environment.h" />
     <ClInclude Include="Error.h" />
     <ClInclude Include="FolderReader.h" />
     <ClInclude Include="Interpreter.h" />
@@ -151,7 +155,10 @@
     <ClInclude Include="Lexer.h" />
     <ClInclude Include="Expr.h" />
     <ClInclude Include="Parser.h" />
+    <ClInclude Include="Stmt.h" />
     <ClInclude Include="Token.h" />
+    <ClInclude Include="TokenType.h" />
+    <ClInclude Include="Visibility.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

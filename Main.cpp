@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <string>
+#include <memory>
 
 #if defined(_DEBUG) && (defined(_WIN32) || defined(_WIN64))
 	#include <stdlib.h>
@@ -102,6 +103,8 @@ static void run_file(char *name) {
 }
 
 static void run_repl() {
+	Interpreter interpreter = {};
+
 	while (true) {
 		JavaError::had_error = false;
 		JavaError::had_runtime_error = false;
@@ -114,27 +117,24 @@ static void run_repl() {
 		size_t len = strlen(prompt);
 		if (len == 1) goto done;
 
-		char* src = (char*)malloc((len + 1) * sizeof(char));
-		assert(src != NULL);
-		strncpy(src, prompt, len + 1);
+		std::string src(prompt);
 
-		Lexer lexer(src, len);
+		Lexer lexer((char*)src.c_str(), len);
 		const std::vector<Token> &tokens = lexer.scan();
 		if (!JavaError::had_error) lexer.print_tokens();
 
-		if (JavaError::had_error) { free(src); continue; }
+		if (JavaError::had_error) { continue; }
 
 		Parser parser(tokens);
-		Expr *expression = parser.parse_expression();
+		std::vector<Stmt*>* statements = parser.parse_statements();
 
-		if (JavaError::had_error) { free(src); continue; }
+		if (JavaError::had_error) {
+			parser.statements_free(statements);
+			continue;
+		}
 
-		AstPrinter::println("Ast Expr: ", expression);
-		Interpreter interpreter = {};
-		interpreter.interpret(expression);
-		expression_free(expression);
-
-		free(src);
+		interpreter.interpret(statements);
+		parser.statements_free(statements);
 	}
 done:;
 }

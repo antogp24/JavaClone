@@ -22,10 +22,14 @@ void lexer_fill_keywords() {
 	keywords->insert({ "continue", TokenType::_continue });
 	keywords->insert({ "return", TokenType::_return });
 	keywords->insert({ "public", TokenType::_public });
+	keywords->insert({ "protected", TokenType::_protected });
 	keywords->insert({ "private", TokenType::_private });
+	keywords->insert({ "final", TokenType::_final });
 	keywords->insert({ "static", TokenType::_static });
 	keywords->insert({ "extends", TokenType::extends });
 	keywords->insert({ "class", TokenType::_class });
+	keywords->insert({ "sout", TokenType::sout });
+	keywords->insert({ "soutln", TokenType::soutln });
 	keywords->insert({ "super", TokenType::super });
 	keywords->insert({ "this", TokenType::_this });
 	keywords->insert({ "boolean", TokenType::type_boolean });
@@ -36,6 +40,7 @@ void lexer_fill_keywords() {
 	keywords->insert({ "float", TokenType::type_float });
 	keywords->insert({ "double", TokenType::type_double });
 	keywords->insert({ "String", TokenType::type_String });
+	keywords->insert({ "ArrayList", TokenType::type_ArrayList });
 }
 
 Lexer::Lexer(char* src, uint64_t len): source({ src, len })
@@ -91,9 +96,14 @@ void Lexer::scan_token() {
 		case '^': add_token(TokenType::bitwise_xor); break;
 		case '~': add_token(TokenType::bitwise_not); break;
 		case ',': add_token(TokenType::comma); break;
-		case '.': add_token(TokenType::dot); break;
-		case '-': add_token(TokenType::minus); break;
-		case '+': add_token(TokenType::plus); break;
+		case '.': {
+			if (is_digit(peek()))
+				JavaError::error(line, column, "There must be a number before the dot in the double or float literal.");
+			else
+				add_token(TokenType::dot);
+		} break;
+		case '-': add_token(match('-') ? TokenType::minus_minus : TokenType::minus); break;
+		case '+': add_token(match('+') ? TokenType::plus_plus : TokenType::plus); break;
 		case '*': add_token(TokenType::star); break;
 		case '%': add_token(TokenType::percent_sign); break;
 		case ';': add_token(TokenType::semicolon); break;
@@ -179,13 +189,19 @@ void Lexer::scan_number_literal() {
 	if (peek() == '.' && is_digit(peek_next())) {
 		number_type = Number_Type::_double;
 		advance();
-		while (is_digit(peek())) {
+		while (!is_at_end() && is_digit(peek())) {
 			if (peek_next() == 'f') {
 				number_type = Number_Type::_float;
 				advance();
 			}
 			advance();
 		}
+	}
+	else if (peek() == '.' && peek_next() == 'f') {
+		JavaError::error(line, column, "There must be a number between the dot and the 'f' in the float literal.");
+	}
+	else if (peek() == '.' && !is_digit(peek_next())) {
+		JavaError::error(line, column, "There must be a number after the dot in the double literal.");
 	}
 
 	std::string name(&source.bytes[start], current - start);

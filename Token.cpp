@@ -21,6 +21,8 @@ const char* get_token_type_name(TokenType type) {
 		case TokenType::slash: return "SLASH";
 		case TokenType::star: return "STAR";
 		case TokenType::percent_sign: return "PERCENT_SIGN";
+		case TokenType::plus_plus: return "PLUS_PLUS";
+		case TokenType::minus_minus: return "MINUS_MINUS";
 		case TokenType::equal: return "EQUALS";
 		case TokenType::single_quote: return "SINGLE_QUOTE";
 		case TokenType::double_quotes: return "DOUBLE_QUOTE";
@@ -59,8 +61,12 @@ const char* get_token_type_name(TokenType type) {
 		case TokenType::_this: return "THIS";
 		case TokenType::extends: return "EXTENDS";
 		case TokenType::_class: return "CLASS";
+		case TokenType::sout: return "SOUT";
+		case TokenType::soutln: return "SOUTLN";
+		case TokenType::_final: return "FINAL";
 		case TokenType::_static: return "STATIC";
 		case TokenType::_private: return "PRIVATE";
+		case TokenType::_protected: return "PROTECTED";
 		case TokenType::_public: return "PUBLIC";
 		case TokenType::type_boolean: return "TYPE_BOOLEAN";
 		case TokenType::type_byte: return "TYPE_BYTE";
@@ -115,3 +121,4 @@ void Token::assign(Token *a, const Token& other) {
 	a->column = other.column;
 	a->literal = other.literal;
 }
+
