@@ -2,8 +2,9 @@
 
 #include "Token.h"
 
-enum class Visibility {
+enum class Visibility : uint8_t {
 	None,
+	Local,
 	Private,
 	Protected,
 	Package,

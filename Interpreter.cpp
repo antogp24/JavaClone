@@ -44,31 +44,62 @@ void Interpreter::execute_block(const std::vector<Stmt*>& statements, Environmen
 }
 
 void Interpreter::execute_statement(Stmt* statement) {
+	// if (statement == nullptr) return;
+
 	switch (statement->get_type()) {
-		case StmtType::block: {
+		case StmtType::Block: {
 			Stmt_Block* stmt = dynamic_cast<Stmt_Block*>(statement);
 			execute_block(stmt->statements, DBG_new Environment(environment));
 		} break;
-		case StmtType::expression: { 
+
+		case StmtType::Expression: { 
 			Stmt_Expression* stmt = dynamic_cast<Stmt_Expression*>(statement);
 			AstPrinter::println("Expression Ast: ", (Expr*)stmt->expression);
 			JavaObject value = evaluate((Expr*)stmt->expression);
 			printf("Expression statement result: ");
 			java_object_print(value);
-			expression_free((Expr*)stmt->expression);
-			stmt->expression = nullptr;
 			printf("\n\n");
 		} break;
-		case StmtType::print: { 
+
+		case StmtType::If: { 
+			Stmt_If* stmt = dynamic_cast<Stmt_If*>(statement);
+			JavaObject condition = evaluate((Expr*)stmt->condition);
+			if (condition.type != JavaType::_boolean) {
+				throw JAVA_RUNTIME_ERROR(stmt->token, "Condition must be boolean");
+			}
+
+			if (condition.value._boolean) {
+				execute_statement((Stmt*)stmt->then_branch);
+			}
+			else {
+				bool matched = false;
+				for (int i = 0; i < stmt->else_ifs.size(); i++) {
+					const Else_If& else_if = stmt->else_ifs.at(i);
+					JavaObject else_if_condition = evaluate((Expr*)else_if.condition);
+					if (else_if_condition.type != JavaType::_boolean) {
+						throw JAVA_RUNTIME_ERROR(else_if.token, "Condition must be boolean");
+					}
+					if (else_if_condition.value._boolean) {
+						matched = true;
+						execute_statement((Stmt*)else_if.then_branch);
+						break;
+					}
+				}
+				if (stmt->else_branch != nullptr && !matched) {
+					execute_statement((Stmt*)stmt->else_branch);
+				}
+			}
+		} break;
+
+		case StmtType::Print: { 
 			Stmt_Print* stmt = dynamic_cast<Stmt_Print*>(statement);
 			AstPrinter::println("Print Ast: ", (Expr*)stmt->expression);
 			JavaObject value = evaluate((Expr*)stmt->expression);
 			java_object_print(value);
-			expression_free((Expr*)stmt->expression);
-			stmt->expression = nullptr;
 			if (stmt->has_newline) printf("\n");
 		} break;
-		case StmtType::var: {
+
+		case StmtType::Var: {
 			Stmt_Var* stmt = dynamic_cast<Stmt_Var*>(statement);
 			JavaObject value = { JavaType::_null, JavaValue{} };
 
@@ -92,10 +123,20 @@ void Interpreter::execute_statement(Stmt* statement) {
 				JavaObject value = evaluate((Expr*)stmt->initializer);
 				printf(" initialized with ");
 				java_object_print(value);
-				expression_free((Expr*)stmt->initializer);
-				stmt->initializer = nullptr;
 			}
 			printf("\n");
+		} break;
+
+		case StmtType::While: {
+			Stmt_While* stmt = dynamic_cast<Stmt_While*>(statement);
+			JavaObject condition = evaluate((Expr*)stmt->condition);
+			if (condition.type != JavaType::_boolean) {
+				throw JAVA_RUNTIME_ERROR(stmt->token, "Expected boolean condition.");
+			}
+			while (condition.value._boolean) {
+				execute_statement((Stmt*)stmt->body);
+				condition = evaluate((Expr*)stmt->condition);
+			}
 		} break;
 	}
 }

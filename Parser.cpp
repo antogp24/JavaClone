@@ -136,8 +136,131 @@ Stmt* Parser::statement() {
 	if (match(TokenType::sout)) return print_statement(false);
 	if (match(TokenType::soutln)) return print_statement(true);
 	if (match(TokenType::curly_left)) return block_statement();
+	if (match(TokenType::_if)) return if_statement();
+	if (match(TokenType::_while)) return while_statement();
+	if (match(TokenType::_for)) return for_statement();
 
 	return expression_statement();
+}
+
+Stmt* Parser::for_statement() {
+	Token token = previous();
+	consume(TokenType::paren_left, "Expect '(' before 'for' initializer.");
+
+	Stmt* initializer;
+	if (match(TokenType::semicolon)) {
+		initializer = nullptr;
+	}
+	else if (match_java_type()) {
+		initializer = var_declaration(previous(), Visibility::Local, false, false);
+	}
+	else {
+		initializer = expression_statement();
+	}
+
+	Expr* condition = nullptr;
+	if (!check(TokenType::semicolon)) {
+		condition = parse_expression();
+	}
+	if (!match(TokenType::semicolon)) {
+		statement_free(initializer);
+		expression_free(condition);
+		throw JAVA_RUNTIME_ERROR(previous(), "Expected ';' after 'for' condition.");
+	}
+
+	Expr* increment = nullptr;
+	if (!check(TokenType::paren_right)) {
+		increment = parse_expression();
+	}
+	if (!match(TokenType::paren_right)) {
+		statement_free(initializer);
+		expression_free(condition);
+		expression_free(increment);
+		throw JAVA_RUNTIME_ERROR(previous(), "Expected ')' after 'for' increment.");
+	}
+
+	Stmt* body = statement();
+
+	if (increment != nullptr) {
+		Stmt_Expression* increment_statement = DBG_new Stmt_Expression{increment};
+		if (body->get_type() == StmtType::Block) {
+			Stmt_Block* block = dynamic_cast<Stmt_Block*>(body);
+			block->statements.push_back(increment_statement);
+		}
+		else {
+			std::vector<Stmt*> statements;
+			statements.emplace_back(body);
+			statements.emplace_back((Stmt*)increment_statement);
+			body = DBG_new Stmt_Block{ statements };
+		}
+	}
+
+	if (condition == nullptr) {
+		JavaObject literal = { JavaType::_boolean, JavaValue{} };
+		literal.value._boolean = true;
+		condition = DBG_new Expr_Literal{literal};
+	}
+	body = DBG_new Stmt_While{token, condition, body, increment != nullptr};
+
+	if (initializer != nullptr) {
+		std::vector<Stmt*> statements;
+		statements.emplace_back(initializer);
+		statements.emplace_back(body);
+		body = DBG_new Stmt_Block{ statements };
+	}
+
+	return body;
+}
+
+Stmt* Parser::while_statement() {
+	Token token = previous();
+	consume(TokenType::paren_left, "Expect '(' before 'while' condition.");
+	Expr* condition = parse_expression();
+	consume(TokenType::paren_right, condition, "Expect ')' after 'while' condition.");
+	Stmt* body = statement();
+
+	return DBG_new Stmt_While{token, condition, body, false};
+}
+
+Stmt* Parser::if_statement() {
+	Token token = previous();
+
+	consume(TokenType::paren_left, "Expect '(' after 'if'.");
+	Expr* condition = parse_expression();
+	consume(TokenType::paren_right, condition, "Expect ')' after condition in 'if'.");
+	Stmt* then_branch = statement();
+
+	std::vector<Else_If> else_ifs = {};
+	while (check(TokenType::_else)) {
+		if (peek_next().type == TokenType::_if) {
+			advance(); // consume else
+			Token else_if_token = advance(); // consume if
+			if (!match(TokenType::paren_left)) {
+				expression_free(condition);
+				statement_free(then_branch);
+				throw error(peek(), "Expect '(' after 'else if'.");
+			}
+			Expr* else_if_condition = parse_expression();
+			if (!match(TokenType::paren_right)) {
+				expression_free(condition);
+				statement_free(then_branch);
+				expression_free(else_if_condition);
+				throw error(peek(), "Expect ')' after condition in 'else if'.");
+			}
+			Stmt* else_if_then_branch = statement();
+			else_ifs.emplace_back(else_if_token, else_if_condition, else_if_then_branch);
+		}
+		else {
+			break;
+		}
+	}
+
+	Stmt* else_branch = nullptr;
+	if (match(TokenType::_else)) {
+		else_branch = statement();
+	}
+
+	return DBG_new Stmt_If{token, condition, then_branch, else_ifs, else_branch};
 }
 
 Stmt* Parser::print_statement(const bool has_newline) {

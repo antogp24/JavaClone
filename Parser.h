@@ -14,14 +14,17 @@ public:
 	~Parser();
 	Expr* parse_expression();
 	std::vector<Stmt*>* parse_statements();
-	Stmt* statement();
 	void statements_free(std::vector<Stmt*>* statements);
 
 private:
+	Stmt* declaration();
+	Stmt* statement();
+	Stmt* while_statement();
+	Stmt* for_statement();
+	Stmt* if_statement();
 	Stmt* print_statement(const bool has_newline);
 	Stmt* expression_statement();
 	Stmt* block_statement();
-	Stmt* declaration();
 	Stmt* complex_var_declaration(TokenType first_modifier);
 	Stmt* var_declaration(Token type, Visibility visibility, bool is_static, bool is_final);
 

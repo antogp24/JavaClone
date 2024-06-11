@@ -18,6 +18,7 @@ bool is_token_type_visibility(TokenType type) {
 
 const char* visibility_to_cstring(Visibility v) {
 	switch (v) {
+		case Visibility::Local: return "local";
 		case Visibility::Private: return "private";
 		case Visibility::Protected: return "protected";
 		case Visibility::Public: return "public";

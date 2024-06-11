@@ -25,7 +25,7 @@ struct AstPrinter {
 	}
 
 	static void print(Expr *_expr) {
-		if (_expr == NULL) {
+		if (_expr == nullptr) {
 			printf("(invalid|empty)");
 			return;
 		}
