@@ -5,6 +5,9 @@
 #include <stdarg.h>
 
 #include "Token.h"
+#include "Color.h"
+
+#define ERROR_MSG_END COLOR_END"\n\n"
 
 class JavaRuntimeError {
 private:
@@ -36,5 +39,6 @@ namespace JavaError {
 
 	void error(uint32_t line, uint32_t column, const char* fmt, ...);
 	void error(const Token &token, const char* fmt, ...);
+	void error(const Token& token, const char* fmt, va_list args);
 	void runtime_error(const JavaRuntimeError &error);
 };

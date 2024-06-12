@@ -467,11 +467,26 @@ Expr *Parser::factor() {
 }
 
 Expr *Parser::unary() {
-	if (match(5, TokenType::_not, TokenType::minus, TokenType::bitwise_not, TokenType::plus_plus, TokenType::minus_minus)) {
+	if (match(5, TokenType::_not, TokenType::minus, TokenType::bitwise_not)) {
 		Token _operator = previous();
 		Expr* right = unary();
 		return DBG_new Expr_Unary{_operator, right};
 	}
+
+	// Prefix -- ++
+	if (match(2, TokenType::plus_plus, TokenType::minus_minus)) {
+		bool is_positive = previous().type == TokenType::plus_plus;
+		Token name = consume(TokenType::identifier, "Expected identifier after prefix '%s'.", previous().lexeme);
+		return DBG_new Expr_Increment{ name, is_positive };
+	}
+
+	// Postfix -- ++
+	if (check(TokenType::identifier) && (check_next(TokenType::plus_plus) || check_next(TokenType::minus_minus))) {
+		Token name = advance();
+		bool is_positive = advance().type == TokenType::plus_plus;
+		return DBG_new Expr_Increment{ name, is_positive };
+	}
+
 	if (match(TokenType::paren_left)) {
 		switch (peek().type) {
 			case TokenType::type_boolean:
@@ -564,11 +579,16 @@ Expr *Parser::primary() {
 	throw error(peek(), "Expected expression.");
 }
 
-Parser::Error Parser::error(Token name, const char *fmt, ...) {
-	va_list ap;
-	va_start(ap, fmt);
-	JavaError::error(name, fmt, ap);
-	va_end(ap);
+Parser::Error Parser::error(Token token, const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	JavaError::error(token, fmt, args);
+	va_end(args);
+	return {};
+}
+
+Parser::Error Parser::error(Token token, const char *fmt, va_list args) {
+	JavaError::error(token, fmt, args);
 	return {};
 }
 
@@ -609,8 +629,9 @@ Token Parser::consume(TokenType type, const char* fmt, ...) {
 
 	va_list ap;
 	va_start(ap, fmt);
-	throw error(peek(), fmt, ap);
+	Error e = error(peek(), fmt, ap);
 	va_end(ap);
+	throw e;
 }
 
 Token Parser::consume(TokenType type, Expr* to_free, const char* fmt, ...) {
@@ -619,8 +640,9 @@ Token Parser::consume(TokenType type, Expr* to_free, const char* fmt, ...) {
 	expression_free(to_free);
 	va_list ap;
 	va_start(ap, fmt);
-	throw error(peek(), fmt, ap);
+	Error e = error(peek(), fmt, ap);
 	va_end(ap);
+	throw e;
 }
 
 Token Parser::consume(TokenType type, Expr* to_free, std::vector<Expr*> *to_free_list, const char* fmt, ...) {
@@ -635,8 +657,9 @@ Token Parser::consume(TokenType type, Expr* to_free, std::vector<Expr*> *to_free
 	}
 	va_list ap;
 	va_start(ap, fmt);
-	throw error(peek(), fmt, ap);
+	Error e = error(peek(), fmt, ap);
 	va_end(ap);
+	throw e;
 }
 
 Token Parser::consume(TokenType type, Expr* to_free_0, Expr* to_free_1, const char* fmt, ...) {
@@ -646,8 +669,9 @@ Token Parser::consume(TokenType type, Expr* to_free_0, Expr* to_free_1, const ch
 	expression_free(to_free_1);
 	va_list ap;
 	va_start(ap, fmt);
-	throw error(peek(), fmt, ap);
+	Error e = error(peek(), fmt, ap);
 	va_end(ap);
+	throw e;
 }
 
 Token Parser::consume(TokenType type, const std::vector<Stmt*> &to_free, const char* fmt, ...) {
@@ -659,8 +683,9 @@ Token Parser::consume(TokenType type, const std::vector<Stmt*> &to_free, const c
 
 	va_list ap;
 	va_start(ap, fmt);
-	throw error(peek(), fmt, ap);
+	Error e = error(peek(), fmt, ap);
 	va_end(ap);
+	throw e;
 }
 
 bool Parser::match_any_modifier() {
@@ -720,6 +745,11 @@ bool Parser::check_java_type() {
 bool Parser::check(TokenType type) {
 	if (is_at_end()) return false;
 	return peek().type == type;
+}
+
+bool Parser::check_next(TokenType type) {
+	if (peek_next().type == TokenType::eof) return false;
+	return peek_next().type == type;
 }
 
 Token Parser::advance() {

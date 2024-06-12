@@ -20,7 +20,8 @@ namespace JavaError {
 	bool had_error;
 	bool had_runtime_error;
 };
-Keywords *keywords = nullptr;
+
+bool REPL = false;
 
 static void run_dir(char* name);
 static void run_file(char *name);
@@ -31,28 +32,19 @@ int main(int argc, char** argv) {
 	JavaError::had_runtime_error = false;
 
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-	{
-		// This bullshit is to avoid a false positive
-		// from crtdbg that a global std::unordered_map
-		// causes a memory leak, when in reality it calls
-		// the destructor after dumping the memory leaks.
-		// This scope forces it to call the destructor before.
-		Keywords local_keywords;
-		keywords = &local_keywords;
-		lexer_fill_keywords();
 
-		if (argc - 1 > 1) {
-			printf("Usage: javaclone <directory>");
-			return 1;
-		}
-		else if (argc - 1 == 1) {
-			run_dir(argv[1]);
-		}
-		else {
-			run_repl();
-		}
-
+	if (argc - 1 > 1) {
+		printf("Usage: javaclone <directory>");
+		return 1;
 	}
+	else if (argc - 1 == 1) {
+		run_dir(argv[1]);
+	}
+	else {
+		// REPL = true;
+		run_repl();
+	}
+
 	_CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_DEBUG);
 	_CrtDumpMemoryLeaks();
 	return 0;
@@ -96,7 +88,7 @@ static void run_file(char *name) {
 	Lexer lexer(src, len);
 	const std::vector<Token> &tokens = lexer.scan();
 
-	if (!JavaError::had_error) lexer.print_tokens();
+	if (!JavaError::had_error && REPL) lexer.print_tokens();
 
 	free(src);
 	fclose(file);
@@ -121,7 +113,7 @@ static void run_repl() {
 
 		Lexer lexer((char*)src.c_str(), len);
 		const std::vector<Token> &tokens = lexer.scan();
-		if (!JavaError::had_error) lexer.print_tokens();
+		if (!JavaError::had_error && REPL) lexer.print_tokens();
 
 		if (JavaError::had_error) { continue; }
 

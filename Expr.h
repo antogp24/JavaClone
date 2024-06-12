@@ -9,6 +9,7 @@ enum class ExprType {
 	call,
 	get,
 	grouping,
+	increment,
 	literal,
 	logical,
 	set,
@@ -83,6 +84,17 @@ struct Expr_Grouping : public Expr {
 	{}
 
 	inline ExprType get_type() override { return ExprType::grouping; }
+};
+
+struct Expr_Increment : public Expr {
+	const Token name;
+	const bool is_positive;
+
+	Expr_Increment(const Token p_name, const int8_t p_is_positive):
+		name(p_name), is_positive(p_is_positive)
+	{}
+
+	inline ExprType get_type() override { return ExprType::increment; }
 };
 
 struct Expr_Literal : public Expr{

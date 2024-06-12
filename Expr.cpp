@@ -40,6 +40,11 @@ void expression_free(Expr* _expr) {
 			free(expr);
 		} break;
 
+		case ExprType::increment: {
+			Expr_Increment* expr = dynamic_cast<Expr_Increment*>(_expr);
+			free(expr);
+		} break;
+
 		case ExprType::literal: {
 			Expr_Literal* expr = dynamic_cast<Expr_Literal*>(_expr);
 			free(expr);

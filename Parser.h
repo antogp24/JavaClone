@@ -48,6 +48,7 @@ private:
 
 	class Error {};
 	Error error(Token name, const char *fmt, ...);
+	Error error(Token token, const char* fmt, va_list args);
 	void synchronize();
 
 	Token consume(TokenType type, const char *fmt, ...);
@@ -61,6 +62,7 @@ private:
 	bool match(size_t n, ...);
 	bool check_java_type();
 	bool check(TokenType type);
+	bool check_next(TokenType type);
 	Token advance();
 	inline bool is_at_end();
 	inline Token peek();

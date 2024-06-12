@@ -10,39 +10,6 @@
 	#include <crtdbg.h>
 #endif
 
-void lexer_fill_keywords() {
-	keywords->insert({ "true", TokenType::_true });
-	keywords->insert({ "false", TokenType::_false });
-	keywords->insert({ "null", TokenType::_null });
-	keywords->insert({ "if", TokenType::_if });
-	keywords->insert({ "else", TokenType::_else });
-	keywords->insert({ "for", TokenType::_for });
-	keywords->insert({ "while", TokenType::_while });
-	keywords->insert({ "break", TokenType::_break });
-	keywords->insert({ "continue", TokenType::_continue });
-	keywords->insert({ "return", TokenType::_return });
-	keywords->insert({ "public", TokenType::_public });
-	keywords->insert({ "protected", TokenType::_protected });
-	keywords->insert({ "private", TokenType::_private });
-	keywords->insert({ "final", TokenType::_final });
-	keywords->insert({ "static", TokenType::_static });
-	keywords->insert({ "extends", TokenType::extends });
-	keywords->insert({ "class", TokenType::_class });
-	keywords->insert({ "sout", TokenType::sout });
-	keywords->insert({ "soutln", TokenType::soutln });
-	keywords->insert({ "super", TokenType::super });
-	keywords->insert({ "this", TokenType::_this });
-	keywords->insert({ "boolean", TokenType::type_boolean });
-	keywords->insert({ "byte", TokenType::type_byte });
-	keywords->insert({ "char", TokenType::type_char });
-	keywords->insert({ "int", TokenType::type_int });
-	keywords->insert({ "long", TokenType::type_long });
-	keywords->insert({ "float", TokenType::type_float });
-	keywords->insert({ "double", TokenType::type_double });
-	keywords->insert({ "String", TokenType::type_String });
-	keywords->insert({ "ArrayList", TokenType::type_ArrayList });
-}
-
 Lexer::Lexer(char* src, uint64_t len): source({ src, len })
 {
 }
@@ -176,7 +143,7 @@ void Lexer::scan_identifier() {
 	std::string name(&source.bytes[start], current - start);
 	name.append("\0");
 
-	TokenType type = keywords->contains(name) ? keywords->at(name) : TokenType::identifier;
+	TokenType type = keywords.contains(name) ? keywords.at(name) : TokenType::identifier;
 	add_token(type);
 }
 

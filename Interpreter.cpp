@@ -10,6 +10,7 @@
 	#define DBG_new new
 #endif
 
+extern bool REPL;
 
 Interpreter::Interpreter() {
 	globals = DBG_new Environment();
@@ -54,11 +55,13 @@ void Interpreter::execute_statement(Stmt* statement) {
 
 		case StmtType::Expression: { 
 			Stmt_Expression* stmt = dynamic_cast<Stmt_Expression*>(statement);
-			AstPrinter::println("Expression Ast: ", (Expr*)stmt->expression);
 			JavaObject value = evaluate((Expr*)stmt->expression);
-			printf("Expression statement result: ");
-			java_object_print(value);
-			printf("\n\n");
+			if (REPL) {
+				AstPrinter::println("Expression Ast: ", (Expr*)stmt->expression);
+				printf("Expression statement result: ");
+				java_object_print(value);
+				printf("\n\n");
+			}
 		} break;
 
 		case StmtType::If: { 
@@ -93,8 +96,8 @@ void Interpreter::execute_statement(Stmt* statement) {
 
 		case StmtType::Print: { 
 			Stmt_Print* stmt = dynamic_cast<Stmt_Print*>(statement);
-			AstPrinter::println("Print Ast: ", (Expr*)stmt->expression);
 			JavaObject value = evaluate((Expr*)stmt->expression);
+			if (REPL) AstPrinter::println("Print Ast: ", (Expr*)stmt->expression);
 			java_object_print(value);
 			if (stmt->has_newline) printf("\n");
 		} break;
@@ -115,16 +118,20 @@ void Interpreter::execute_statement(Stmt* statement) {
 			value.type = token_type_to_java_type(stmt->type.type);
 			environment->define(stmt, value);
 
-			printf("Defined %s ", stmt->is_static ? "static" : "non static");
-			printf("(%s %s) ", stmt->is_final ? "final" : "var", stmt->name.lexeme);
-			printf("of type (%s) with visibility ", stmt->type.lexeme);
-			printf("%s", visibility_to_cstring(stmt->visibility));
+			if (REPL) {
+				printf("Defined %s ", stmt->is_static ? "static" : "non static");
+				printf("(%s %s) ", stmt->is_final ? "final" : "var", stmt->name.lexeme);
+				printf("of type (%s) with visibility ", stmt->type.lexeme);
+				printf("%s", visibility_to_cstring(stmt->visibility));
+			}
 			if (stmt->initializer != nullptr) {
 				JavaObject value = evaluate((Expr*)stmt->initializer);
-				printf(" initialized with ");
-				java_object_print(value);
+				if (REPL) {
+					printf(" initialized with ");
+					java_object_print(value);
+				}
 			}
-			printf("\n");
+			if (REPL) printf("\n");
 		} break;
 
 		case StmtType::While: {
@@ -268,9 +275,6 @@ JavaObject Interpreter::evaluate_unary(Expr* expression) {
 			result.value.##T = result.value.##T = op right.value.##T;  \
 		} break;
 
-	// The same but the result is the right. Useful for ++ and --.
-	#define case_unary_no_return(op, T) case JavaType::##T: op right.value.##T; break;
-
 	// This is intended for numbers.
 	#define case_op_unary(op, T)                              \
 		case TokenType::##T: {                                \
@@ -285,20 +289,6 @@ JavaObject Interpreter::evaluate_unary(Expr* expression) {
 			}                                                 \
 			return result;                                    \
 		} break;
-
-	// The same but the result is the right. Useful for ++ and --.
-	#define case_op_unary_no_return(op, T)          \
-		case TokenType::##T: {                      \
-			switch (right.type) {                   \
-				case_unary_no_return(op, _byte)     \
-				case_unary_no_return(op, _int)      \
-				case_unary_no_return(op, _long)     \
-				case_unary_no_return(op, _float)    \
-				case_unary_no_return(op, _double)   \
-				default: op_error("Only numbers");  \
-			}                                       \
-			return right;                           \
-		}
 
 	// This is intended for whole numbers.
 	#define case_op_unary_whole(op, T)                        \
@@ -317,8 +307,6 @@ JavaObject Interpreter::evaluate_unary(Expr* expression) {
 	switch (expr->_operator.type) {
 		case_op_unary(-, minus)
 		case_op_unary_whole(~, bitwise_not)
-		case_op_unary_no_return(++, plus_plus)
-		case_op_unary_no_return(--, minus_minus)
 
 		case TokenType::_not: {
 			JavaObject result = { JavaType::_boolean, JavaValue{} };
@@ -359,14 +347,48 @@ JavaObject Interpreter::evaluate_unary(Expr* expression) {
 		// Those crazy macros exist only for this code.
 		#undef op_error
 		#undef case_unary
-		#undef case_unary_no_return
 		#undef case_op_unary
-		#undef case_op_unary_no_return
 		#undef case_op_unary_whole
 		#undef case_cast
 		#undef case_cast_number
 	}
 	return JavaObject{ JavaType::none, JavaValue{} };
+}
+
+JavaObject Interpreter::evaluate_increment_or_decrement(Expr* expression) {
+	Expr_Increment* expr = dynamic_cast<Expr_Increment*>(expression);
+	JavaObject result = environment->get(expr->name);
+
+	#define case_op(op, T) case JavaType::##T: op result.value.##T; break;
+	#define type_error() throw JAVA_RUNTIME_ERROR(expr->name, "Expected a number operand.")
+
+	if (expr->is_positive) {
+		switch (result.type) {
+			case_op(++, _byte)
+			case_op(++, _char)
+			case_op(++, _int)
+			case_op(++, _long)
+			case_op(++, _float)
+			case_op(++, _double)
+			default: type_error();
+		}
+	}
+	else {
+		switch (result.type) {
+			case_op(--, _byte)
+			case_op(--, _char)
+			case_op(--, _int)
+			case_op(--, _long)
+			case_op(--, _float)
+			case_op(--, _double)
+			default: type_error();
+		}
+	}
+	#undef case_op
+	#undef type_error
+
+	environment->assign(expr->name, result);
+	return result;
 }
 
 JavaObject Interpreter::evaluate_logical(Expr* expression) {
@@ -445,6 +467,10 @@ JavaObject Interpreter::evaluate(Expr* expression) {
 		case ExprType::grouping: {
 			Expr_Grouping* expr = dynamic_cast<Expr_Grouping*>(expression);
 			return evaluate((Expr*)expr->expression);
+		} break;
+
+		case ExprType::increment: {
+			return evaluate_increment_or_decrement(expression);
 		} break;
 
 		case ExprType::unary: {
