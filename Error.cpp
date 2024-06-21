@@ -9,6 +9,9 @@
 	#include <crtdbg.h>
 #endif
 
+#define ERROR_MSG_END COLOR_END"\n"
+
+
 void JavaError::error(uint32_t line, uint32_t column, const char* fmt, ...) {
 	printf(COLOR_CYN"Error at [%u:%u]: ", line, column);
 

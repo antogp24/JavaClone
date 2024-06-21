@@ -13,6 +13,7 @@ struct JavaVariable {
 	Visibility visibility;
 	bool is_static;
 	bool is_final;
+	bool is_uninitialized;
 };
 
 // TODO: Refactor this to have the value be JavaVariable.
@@ -28,8 +29,8 @@ public:
 	JavaVariable scope_get(const Token &name);
 	void scope_set(const Token &name, JavaVariable value);
 
-	void define(Stmt_Var *stmt, JavaObject value);
-	void define(Token name, JavaVariable value);
+	void define(Stmt_Var* stmt, const Token& name, Expr* initializer, JavaObject value);
+	void define(Token name, JavaVariable variable);
 	void assign(Token name, JavaObject value);
 	JavaObject get(const Token &name);
 private:

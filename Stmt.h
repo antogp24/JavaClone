@@ -4,7 +4,9 @@
 #include "Visibility.h"
 
 enum class StmtType {
+	Break,
 	Block,
+	Continue,
 	Expression,
 	If,
 	Print,
@@ -16,6 +18,23 @@ enum class StmtType {
 struct Stmt { inline virtual StmtType get_type() = 0; };
 
 void statement_free(Stmt* statement);
+
+struct Stmt_Break : public Stmt {
+	inline StmtType get_type() override { return StmtType::Break; }
+};
+
+struct Stmt_Block : public Stmt {
+	std::vector<Stmt*> statements;
+
+	Stmt_Block(std::vector<Stmt*> p_statements):
+		statements(p_statements) {}
+
+	inline StmtType get_type() override { return StmtType::Block; }
+};
+
+struct Stmt_Continue : public Stmt {
+	inline StmtType get_type() override { return StmtType::Continue; }
+};
 
 struct Stmt_Expression : public Stmt {
 	const Expr* expression;
@@ -38,31 +57,22 @@ struct Stmt_Print : public Stmt {
 
 struct Stmt_Var : public Stmt {
 	const Token type;
-	const Token name;
-	const Expr* initializer;
+	const std::vector<Token> names;
+	const std::vector<Expr*> initializers;
 	const Visibility visibility;
 	const bool is_static;
 	const bool is_final;
 
-	Stmt_Var(const Token p_type, const Token p_name, const Expr* p_initializer, const Visibility p_visibility, const bool p_is_static, const bool p_is_final):
+	Stmt_Var(const Token p_type, const std::vector<Token> p_names, const std::vector<Expr*> p_initializers, const Visibility p_visibility, const bool p_is_static, const bool p_is_final):
 		type(p_type),
-		name(p_name),
-		initializer(p_initializer),
+		names(p_names),
+		initializers(p_initializers),
 		visibility(p_visibility),
 		is_static(p_is_static),
 		is_final(p_is_final)
 	{}
 
 	inline StmtType get_type() override { return StmtType::Var; }
-};
-
-struct Stmt_Block : public Stmt {
-	std::vector<Stmt*> statements;
-
-	Stmt_Block(std::vector<Stmt*> p_statements):
-		statements(p_statements) {}
-
-	inline StmtType get_type() override { return StmtType::Block; }
 };
 
 struct Else_If {

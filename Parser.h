@@ -19,9 +19,11 @@ public:
 private:
 	Stmt* declaration();
 	Stmt* statement();
+	Stmt* if_statement();
 	Stmt* while_statement();
 	Stmt* for_statement();
-	Stmt* if_statement();
+	Stmt* break_statement();
+	Stmt* continue_statement();
 	Stmt* print_statement(const bool has_newline);
 	Stmt* expression_statement();
 	Stmt* block_statement();
@@ -72,4 +74,5 @@ private:
 private:
 	const std::vector<Token> &tokens;
 	uint32_t current = 0;
+	uint32_t loop_level = 0;
 };

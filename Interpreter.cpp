@@ -1,6 +1,7 @@
 #include "Interpreter.h"
 #include "Error.h"
 #include "AstPrinter.h"
+#include <assert.h>
 
 #if defined(_DEBUG) && (defined(_WIN32) || defined(_WIN64))
 	#include <stdlib.h>
@@ -37,6 +38,7 @@ void Interpreter::execute_block(const std::vector<Stmt*>& statements, Environmen
 	this->environment = environment;
 
 	for (int i = 0; i < statements.size(); i++) {
+		if (this->broke || this->continued) break;
 		execute_statement(statements.at(i));
 	}
 
@@ -48,9 +50,17 @@ void Interpreter::execute_statement(Stmt* statement) {
 	// if (statement == nullptr) return;
 
 	switch (statement->get_type()) {
+		case StmtType::Break: {
+			this->broke = true;
+		} break;
+
 		case StmtType::Block: {
 			Stmt_Block* stmt = dynamic_cast<Stmt_Block*>(statement);
 			execute_block(stmt->statements, DBG_new Environment(environment));
+		} break;
+
+		case StmtType::Continue: {
+			this->continued = true;
 		} break;
 
 		case StmtType::Expression: { 
@@ -104,34 +114,44 @@ void Interpreter::execute_statement(Stmt* statement) {
 
 		case StmtType::Var: {
 			Stmt_Var* stmt = dynamic_cast<Stmt_Var*>(statement);
-			JavaObject value = { JavaType::_null, JavaValue{} };
+			JavaObject value = { JavaType::none, JavaValue{} };
 
-			if (stmt->initializer != nullptr) {
-				value = evaluate((Expr*)stmt->initializer);
+			assert(stmt->names.size() == stmt->initializers.size());
 
-				if (is_token_type_number(stmt->type.type) && !is_java_type_number(value.type) ||
-				   !is_token_type_number(stmt->type.type) && is_java_type_number(value.type))
-				{
-					throw JAVA_RUNTIME_ERROR(stmt->type, "Can't do an implicit cast between '%s' and '%s'.", java_type_cstring(value.type), stmt->type.lexeme);
+			for (int i = 0; i < stmt->names.size(); i++) {
+				Expr* initializer = stmt->initializers.at(i);
+				const Token& name = stmt->names.at(i);
+
+				if (initializer != nullptr) {
+					value = evaluate((Expr*)initializer);
+
+					if ((is_token_type_number(stmt->type.type) || stmt->type.type == TokenType::type_boolean) && value.type == JavaType::_null) {
+						throw JAVA_RUNTIME_ERROR(stmt->type, "Primitives can't be null.");
+					}
+
+					if (is_token_type_number(stmt->type.type) && !is_java_type_number(value.type) ||
+					   !is_token_type_number(stmt->type.type) && is_java_type_number(value.type))
+					{
+						throw JAVA_RUNTIME_ERROR(stmt->type, "Can't do an implicit cast between '%s' and '%s'.", java_type_cstring(value.type), stmt->type.lexeme);
+					}
+
+					value.is_null = (value.type == JavaType::_null);
 				}
-			}
-			value.type = token_type_to_java_type(stmt->type.type);
-			environment->define(stmt, value);
+				value.type = token_type_to_java_type(stmt->type.type);
+				environment->define(stmt, name, initializer, value);
 
-			if (REPL) {
-				printf("Defined %s ", stmt->is_static ? "static" : "non static");
-				printf("(%s %s) ", stmt->is_final ? "final" : "var", stmt->name.lexeme);
-				printf("of type (%s) with visibility ", stmt->type.lexeme);
-				printf("%s", visibility_to_cstring(stmt->visibility));
-			}
-			if (stmt->initializer != nullptr) {
-				JavaObject value = evaluate((Expr*)stmt->initializer);
 				if (REPL) {
-					printf(" initialized with ");
-					java_object_print(value);
+					printf("Defined %s ", stmt->is_static ? "static" : "non static");
+					printf("(%s %s) ", stmt->is_final ? "final" : "var", name.lexeme);
+					printf("of type (%s) with visibility ", stmt->type.lexeme);
+					printf("%s", visibility_to_cstring(stmt->visibility));
+					if (initializer != nullptr) {
+						printf(" initialized with ");
+						java_object_print(value);
+					}
+					printf("\n");
 				}
 			}
-			if (REPL) printf("\n");
 		} break;
 
 		case StmtType::While: {
@@ -142,6 +162,17 @@ void Interpreter::execute_statement(Stmt* statement) {
 			}
 			while (condition.value._boolean) {
 				execute_statement((Stmt*)stmt->body);
+				if (this->broke) {
+					this->broke = false;
+					break;
+				}
+				if (this->continued) {
+					this->continued = false;
+					if (((Stmt*)stmt->body)->get_type() == StmtType::Block && stmt->has_increment) {
+						Stmt_Block* block = dynamic_cast<Stmt_Block*>((Stmt*)stmt->body);
+						execute_statement(block->statements.back());
+					}
+				}
 				condition = evaluate((Expr*)stmt->condition);
 			}
 		} break;

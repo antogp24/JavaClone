@@ -39,6 +39,7 @@ union JavaValue {
 struct JavaObject {
 	JavaType type;
 	JavaValue value;
+	int32_t is_null = false;
 };
 
 JavaType token_type_to_java_type(TokenType type);

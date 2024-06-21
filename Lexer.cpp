@@ -297,7 +297,9 @@ inline void Lexer::add_token(TokenType type, JavaType jtype, JavaValue jvalue) {
 }
 
 inline void Lexer::add_string_token() {
-	add_token(TokenType::string, JavaType::String, JavaValue{});
+	char* lexeme = source.bytes + start + 1;
+	size_t lexeme_len = current - start - 2;
+	tokens.emplace_back(Token{ TokenType::string, lexeme, lexeme_len, line, column - 1, JavaObject{JavaType::String, JavaValue{}} });
 	Token &last = tokens.at(tokens.size() - 1);
 	last.literal.value.String = last.lexeme;
 }

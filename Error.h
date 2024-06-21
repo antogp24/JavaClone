@@ -7,8 +7,6 @@
 #include "Token.h"
 #include "Color.h"
 
-#define ERROR_MSG_END COLOR_END"\n\n"
-
 class JavaRuntimeError {
 private:
 	unsigned int line;

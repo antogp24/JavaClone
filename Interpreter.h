@@ -23,6 +23,8 @@ private:
 	// void check_number_operand(const Token &_operator, const JavaObject &rhs);
 	void check_number_operands(const JavaObject &lhs, const Token &_operator, const JavaObject &rhs);
 private:
+	bool broke = false;
+	bool continued = false;
 	Environment* globals;
 	Environment* environment;
 };

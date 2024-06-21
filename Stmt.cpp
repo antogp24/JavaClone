@@ -4,11 +4,21 @@ void statement_free(Stmt* statement) {
 	if (statement == nullptr) return;
 
 	switch (statement->get_type()) {
+		case StmtType::Break: {
+			Stmt_Break* stmt = dynamic_cast<Stmt_Break*>(statement);
+			delete stmt;
+		} break;
+
 		case StmtType::Block: {
 			Stmt_Block* stmt = dynamic_cast<Stmt_Block*>(statement);
 			for (int i = 0; i < stmt->statements.size(); i++) {
 				statement_free(stmt->statements.at(i));
 			}
+			delete stmt;
+		} break;
+
+		case StmtType::Continue: {
+			Stmt_Continue* stmt = dynamic_cast<Stmt_Continue*>(statement);
 			delete stmt;
 		} break;
 
@@ -39,7 +49,9 @@ void statement_free(Stmt* statement) {
 
 		case StmtType::Var: {
 			Stmt_Var* stmt = dynamic_cast<Stmt_Var*>(statement);
-			expression_free((Expr*)stmt->initializer);
+			for (int i = 0; i < stmt->initializers.size(); i++) {
+				expression_free(stmt->initializers.at(i));
+			}
 			delete stmt;
 		} break;
 

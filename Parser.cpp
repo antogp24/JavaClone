@@ -116,20 +116,53 @@ Stmt* Parser::complex_var_declaration(TokenType first_modifier) {
 }
 
 Stmt* Parser::var_declaration(Token type, Visibility visibility, bool is_static, bool is_final) {
-	Token name = consume(TokenType::identifier, "Expect variable name.");
+	std::vector<Token> names = {};
+	std::vector<Expr*> initializers = {};
 
-	Expr* initializer = nullptr;
+	Token first_name = consume(TokenType::identifier, "Expected variable name.");
+	names.push_back(first_name);
+	
+	Expr* first_initializer = nullptr;
 	if (match(TokenType::equal)) {
-		initializer = parse_expression();
+		// Always call one level of precedence above the comma operator.
+		first_initializer = ternary_conditional();
+	}
+	if (first_initializer == nullptr && is_final) {
+		throw error(previous(), "Constant must have an initializer.");
+	}
+	initializers.push_back(first_initializer);
+
+	while (match(TokenType::comma)) {
+		Token name = consume(TokenType::identifier, "Expected variable name.");
+		names.push_back(name);
+
+		Expr* initializer = nullptr;
+		if (match(TokenType::equal)) {
+			// Always call one level of precedence above the comma operator.
+			initializer = ternary_conditional();
+		}
+		if (initializer == nullptr && is_final) {
+			for (Expr* it : initializers) {
+				if (it != nullptr) {
+					expression_free(it);
+				}
+			}
+			throw error(previous(), "Constant must have an initializer.");
+		}
+		initializers.push_back(initializer);
 	}
 
 	if (!check(TokenType::semicolon)) {
-		if (initializer != nullptr) expression_free(initializer);
+		for (Expr* initializer : initializers) {
+			if (initializer != nullptr) {
+				expression_free(initializer);
+			}
+		}
 		throw error(previous(), "Expected ';' after variable declaration.");
 	}
 	advance();
 
-	return DBG_new Stmt_Var{type, name, initializer, visibility, is_static, is_final};
+	return DBG_new Stmt_Var{type, names, initializers, visibility, is_static, is_final};
 }
 
 Stmt* Parser::statement() {
@@ -139,11 +172,26 @@ Stmt* Parser::statement() {
 	if (match(TokenType::_if)) return if_statement();
 	if (match(TokenType::_while)) return while_statement();
 	if (match(TokenType::_for)) return for_statement();
+	if (match(TokenType::_break)) return break_statement();
+	if (match(TokenType::_continue)) return continue_statement();
 
 	return expression_statement();
 }
 
+Stmt* Parser::continue_statement() {
+	if (loop_level == 0) throw error(previous(), "Can't use continue statement outside a loop");
+	consume(TokenType::semicolon, "Expected ';' after continue statement.");
+	return DBG_new Stmt_Continue{};
+}
+
+Stmt* Parser::break_statement() {
+	if (loop_level == 0) throw error(previous(), "Can't use break statement outside a loop");
+	consume(TokenType::semicolon, "Expected ';' after break statement.");
+	return DBG_new Stmt_Break{};
+}
+
 Stmt* Parser::for_statement() {
+	this->loop_level++;
 	Token token = previous();
 	consume(TokenType::paren_left, "Expect '(' before 'for' initializer.");
 
@@ -180,6 +228,7 @@ Stmt* Parser::for_statement() {
 	}
 
 	Stmt* body = statement();
+	this->loop_level--;
 
 	if (increment != nullptr) {
 		Stmt_Expression* increment_statement = DBG_new Stmt_Expression{increment};
@@ -213,11 +262,13 @@ Stmt* Parser::for_statement() {
 }
 
 Stmt* Parser::while_statement() {
+	this->loop_level++;
 	Token token = previous();
 	consume(TokenType::paren_left, "Expect '(' before 'while' condition.");
 	Expr* condition = parse_expression();
 	consume(TokenType::paren_right, condition, "Expect ')' after 'while' condition.");
 	Stmt* body = statement();
+	this->loop_level--;
 
 	return DBG_new Stmt_While{token, condition, body, false};
 }
@@ -228,6 +279,10 @@ Stmt* Parser::if_statement() {
 	consume(TokenType::paren_left, "Expect '(' after 'if'.");
 	Expr* condition = parse_expression();
 	consume(TokenType::paren_right, condition, "Expect ')' after condition in 'if'.");
+	if (is_at_end()) {
+		expression_free(condition);
+		throw error(peek(), "Expect statement after ')' in 'if'.");
+	}
 	Stmt* then_branch = statement();
 
 	std::vector<Else_If> else_ifs = {};
@@ -238,14 +293,32 @@ Stmt* Parser::if_statement() {
 			if (!match(TokenType::paren_left)) {
 				expression_free(condition);
 				statement_free(then_branch);
-				throw error(peek(), "Expect '(' after 'else if'.");
+				for (Else_If else_if : else_ifs) {
+					if (else_if.condition != nullptr) expression_free((Expr*)else_if.condition);
+					if (else_if.then_branch != nullptr) statement_free((Stmt*)else_if.then_branch);
+				}
+				throw error(peek(), "Expected '(' after 'else if'.");
 			}
 			Expr* else_if_condition = parse_expression();
 			if (!match(TokenType::paren_right)) {
 				expression_free(condition);
 				statement_free(then_branch);
 				expression_free(else_if_condition);
-				throw error(peek(), "Expect ')' after condition in 'else if'.");
+				for (Else_If else_if : else_ifs) {
+					if (else_if.condition != nullptr) expression_free((Expr*)else_if.condition);
+					if (else_if.then_branch != nullptr) statement_free((Stmt*)else_if.then_branch);
+				}
+				throw error(peek(), "Expected ')' after condition in 'else if'.");
+			}
+			if (is_at_end()) {
+				expression_free(condition);
+				statement_free(then_branch);
+				expression_free(else_if_condition);
+				for (Else_If else_if : else_ifs) {
+					if (else_if.condition != nullptr) expression_free((Expr*)else_if.condition);
+					if (else_if.then_branch != nullptr) statement_free((Stmt*)else_if.then_branch);
+				}
+				throw error(peek(), "Expected statement after ')' in 'else if'.");
 			}
 			Stmt* else_if_then_branch = statement();
 			else_ifs.emplace_back(else_if_token, else_if_condition, else_if_then_branch);
@@ -264,16 +337,16 @@ Stmt* Parser::if_statement() {
 }
 
 Stmt* Parser::print_statement(const bool has_newline) {
-	consume(TokenType::paren_left, "Expect '(' before value.");
+	consume(TokenType::paren_left, "Expected '(' before expression in print statement.");
 	Expr* value = parse_expression();
-	consume(TokenType::paren_right, value, "Expect ')' after value.");
-	consume(TokenType::semicolon, value, "Expect ';' after value.");
+	consume(TokenType::paren_right, value, "Expected ')' after expression in print statement.");
+	consume(TokenType::semicolon, value, "Expected ';' after ')' in print statement.");
 	return DBG_new Stmt_Print(value, has_newline);
 }
 
 Stmt* Parser::expression_statement() {
 	Expr* value = parse_expression();
-	consume(TokenType::semicolon, value, "Expect ';' after value.");
+	consume(TokenType::semicolon, value, "Expected ';' after value in expression statement.");
 	return DBG_new Stmt_Expression(value);
 }
 
@@ -467,7 +540,7 @@ Expr *Parser::factor() {
 }
 
 Expr *Parser::unary() {
-	if (match(5, TokenType::_not, TokenType::minus, TokenType::bitwise_not)) {
+	if (match(3, TokenType::_not, TokenType::minus, TokenType::bitwise_not)) {
 		Token _operator = previous();
 		Expr* right = unary();
 		return DBG_new Expr_Unary{_operator, right};
