@@ -4,6 +4,7 @@
 
 enum class JavaType : uint8_t {
 	none = 0,
+	_void,
 	_boolean,
 	_byte,
 	_char,
@@ -13,6 +14,7 @@ enum class JavaType : uint8_t {
 	_double,
 	_null,
 	String,
+	Function,
 	count,
 };
 
@@ -34,6 +36,7 @@ union JavaValue {
 	Java_float _float;
 	Java_double _double;
 	Java_String String;
+	void* function;
 };
 
 struct JavaObject {
@@ -46,6 +49,7 @@ JavaType token_type_to_java_type(TokenType type);
 const char* java_type_cstring(JavaType type);
 bool is_java_type_number(JavaType type);
 bool is_token_type_number(TokenType type);
+bool is_token_type_java_type(TokenType type);
 void java_object_print(const JavaObject& object);
 JavaType java_get_smaller_type(const JavaObject& lhs, const JavaObject& rhs);
 JavaType java_get_bigger_type(const JavaObject& lhs, const JavaObject &rhs);

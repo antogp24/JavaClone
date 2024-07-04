@@ -1,4 +1,6 @@
 #include "Environment.h"
+#include "Interpreter.h"
+#include "JavaNativeFunction.h"
 #include "Error.h"
 #include <assert.h>
 
@@ -18,18 +20,42 @@ void Environment::define(Stmt_Var* stmt, const Token& name, Expr* initializer, J
 
 void Environment::define(Token name, JavaVariable variable) {
 	if (scope_has(name)) {
-		throw JAVA_RUNTIME_ERROR(name, "Variable '%s' is already defined in this scope.", name.lexeme);
+		throw JAVA_RUNTIME_ERROR_VA(name, "Variable '%s' is already defined in this scope.", name.lexeme);
 	}
 	scope_set(name, variable);
 }
 
+void Environment::define_native_function(
+		const std::string& name,
+		std::function<int()> arity_fn,
+		std::function<JavaObject(void*, std::vector<ArgumentInfo>)> call_fn,
+		std::function<std::string()> to_string_fn)
+{
+	values[name] = JavaVariable{
+		JavaObject{
+			JavaType::Function,
+			JavaValue{
+				.function = DBG_new JavaNativeFunction { arity_fn, call_fn, to_string_fn }
+			},
+		},
+		Visibility::Public,
+		true,
+		true,
+		false,
+	};
+}
+
 void Environment::assign(Token name, JavaObject value) {
-	if (scope_has(name)) {
-		JavaVariable variable = scope_get(name);
+	assign(name.lexeme, name.line, name.column, value);
+}
+
+void Environment::assign(const std::string& name, uint32_t line, uint32_t column, JavaObject value) {
+	if (values.contains(name)) {
+		JavaVariable variable = values.at(name);
 		variable.is_uninitialized = false;
 
 		if (variable.is_final) {
-			throw JAVA_RUNTIME_ERROR(name, "Variable '%s' is final.", name.lexeme);
+			throw JAVA_RUNTIME_ERR_VA(name, line, column, "Variable '%s' is final.", name.c_str());
 		}
 
 		if (variable.value.type == value.type) {
@@ -43,25 +69,25 @@ void Environment::assign(Token name, JavaObject value) {
 				case JavaType::_long: variable.value.value._long = java_cast_to_long(value); break;
 				case JavaType::_float: variable.value.value._float = java_cast_to_float(value); break;
 				case JavaType::_double: variable.value.value._double = java_cast_to_double(value); break;
-				default: throw JAVA_RUNTIME_ERROR(name, "Can't implicitly cast '%s' to '%s'.", java_type_cstring(value.type), java_type_cstring(variable.value.type));
+				default: throw JAVA_RUNTIME_ERR_VA(name, line, column, "Can't implicitly cast '%s' to '%s'.", java_type_cstring(value.type), java_type_cstring(variable.value.type));
 			}
 		}
 		else {
 			if (variable.value.type != JavaType::String) {
-				throw JAVA_RUNTIME_ERROR(name, "Only objects can be null.");
+				throw JAVA_RUNTIME_ERR(name, line, column, "Only objects can be null.");
 			}
 			variable.value.is_null = true;
 		}
-		scope_set(name, variable);
+		values[name] = variable;
 		return;
 	}
 
 	if (enclosing != nullptr) {
-		enclosing->assign(name, value);
+		enclosing->assign(name, line, column, value);
 		return;
 	}
 
-	throw JAVA_RUNTIME_ERROR(name, "Undefined variable '%s'.", name.lexeme);
+	throw JAVA_RUNTIME_ERR_VA(name, line, column, "Undefined variable '%s'.", name.c_str());
 }
 
 bool Environment::scope_has(const Token &name) {
@@ -79,16 +105,27 @@ void Environment::scope_set(const Token& name, JavaVariable variable) {
 	values[copied] = variable;
 }
 
+void* Environment::get_function_ptr(const std::string& name) {
+	JavaObject object = values.at(name).value;
+	assert(object.type == JavaType::Function);
+	return object.value.function;
+}
+
 JavaObject Environment::get(const Token &name) {
-	if (scope_has(name)) {
-		JavaVariable var = scope_get(name);
+	return get(name.lexeme, name.line, name.column);
+}
+
+JavaObject Environment::get(const std::string& name, uint32_t line, uint32_t column) {
+	if (values.contains(name)) {
+		JavaVariable var = values.at(name);
 		if (var.is_uninitialized) {
-			throw JAVA_RUNTIME_ERROR(name, "Variable is uninitialized.");
+			throw JAVA_RUNTIME_ERR(name, line, column, "Variable is uninitialized.");
 		}
 		return var.value;
 	}
 
-	if (enclosing != nullptr) return enclosing->get(name);
+	if (enclosing != nullptr) return enclosing->get(name, line, column);
 
-	throw JAVA_RUNTIME_ERROR(name, "Undefined variable %s.", name.lexeme);
+	throw JAVA_RUNTIME_ERR_VA(name, line, column, "Undefined variable %s.", name.c_str());
 }
+

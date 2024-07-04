@@ -68,6 +68,7 @@ const char* get_token_type_name(TokenType type) {
 		case TokenType::_private: return "PRIVATE";
 		case TokenType::_protected: return "PROTECTED";
 		case TokenType::_public: return "PUBLIC";
+		case TokenType::type_void: return "TYPE_VOID";
 		case TokenType::type_boolean: return "TYPE_BOOLEAN";
 		case TokenType::type_byte: return "TYPE_BYTE";
 		case TokenType::type_char: return "TYPE_CHAR";

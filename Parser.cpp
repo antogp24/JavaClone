@@ -2,6 +2,8 @@
 #include "Error.h"
 #include "AstPrinter.h"
 
+#include <string>
+#include <unordered_map>
 #include <stdarg.h>
 
 #if defined(_DEBUG) && (defined(_WIN32) || defined(_WIN64))
@@ -52,7 +54,7 @@ std::vector<Stmt*>* Parser::parse_statements() {
 void Parser::statements_free(std::vector<Stmt*>* statements) {
 	if (statements == nullptr) return;
 	for (int i = 0; i < statements->size(); i++) {
-		statement_free(statements->at(i));
+		stmt_free(statements->at(i));
 	}
 	delete statements;
 }
@@ -115,17 +117,72 @@ Stmt* Parser::complex_var_declaration(TokenType first_modifier) {
 	return var_declaration(type, visibility, counts[STATIC] == 1, counts[FINAL] == 1);
 }
 
+Stmt* Parser::fun_declaration(Token return_type, Token name, Visibility visibility, bool is_static) {
+	if (this->func_level != 0) {
+		throw error(previous(), "Can't have nested functions.");
+	}
+	this->func_level++;
+
+	auto parameters = DBG_new std::vector<std::pair<JavaTypeInfo, std::string>>();
+	if (!check(TokenType::paren_right)) {
+		do {
+			if (parameters->size() >= 255) {
+				delete parameters;
+				throw error(peek(), "Can't have more than 255 parameters.");
+			}
+			if (!check_java_type()) { delete parameters; }
+			Token type = consume_java_type("Expected parameter type.");
+			if (!check(TokenType::identifier)) { delete parameters; }
+			Token parameter = consume(TokenType::identifier, "Expected parameter name.");
+			parameters->emplace_back(JavaTypeInfo{token_type_to_java_type(type.type), type.lexeme}, parameter.lexeme);
+		} while (match(TokenType::comma));
+	}
+	consume(TokenType::paren_right, "Expected ')' in function declaration.");
+
+	std::unordered_map<std::string, int> counts = {};
+	for (int i = 0; i < parameters->size(); i++) {
+		const std::string &name = parameters->at(i).second;
+		if (counts.contains(name)) {
+			counts[name] += 1;
+		}
+		else {
+			counts[name] = 1;
+		}
+	}
+
+	for (auto const& [key, value] : counts) {
+		if (value != 1) {
+			delete parameters;
+			throw this->error(previous(), "Function argument names can't repeat!");
+		}
+	}
+
+	consume(TokenType::curly_left, "Expected '{' in function declaration.");
+	std::vector<Stmt*>* body = heap_block_statement();
+
+	this->func_level--;
+	return DBG_new Stmt_Function{ name, visibility, is_static, parameters, body };
+}
+
 Stmt* Parser::var_declaration(Token type, Visibility visibility, bool is_static, bool is_final) {
 	std::vector<Token> names = {};
 	std::vector<Expr*> initializers = {};
 
 	Token first_name = consume(TokenType::identifier, "Expected variable name.");
 	names.push_back(first_name);
+
+	if (match(TokenType::paren_left)) {
+		if (is_final) {
+			error(previous(), "Method can't be final.");
+		}
+		return fun_declaration(type, first_name, visibility, is_static);
+	}
 	
 	Expr* first_initializer = nullptr;
 	if (match(TokenType::equal)) {
 		// Always call one level of precedence above the comma operator.
 		first_initializer = ternary_conditional();
+		expr_freelist.push_back(first_initializer);
 	}
 	if (first_initializer == nullptr && is_final) {
 		throw error(previous(), "Constant must have an initializer.");
@@ -133,31 +190,22 @@ Stmt* Parser::var_declaration(Token type, Visibility visibility, bool is_static,
 	initializers.push_back(first_initializer);
 
 	while (match(TokenType::comma)) {
-		Token name = consume(TokenType::identifier, "Expected variable name.");
+		Token name = consume_no_reset(TokenType::identifier, "Expected variable name.");
 		names.push_back(name);
 
 		Expr* initializer = nullptr;
 		if (match(TokenType::equal)) {
 			// Always call one level of precedence above the comma operator.
 			initializer = ternary_conditional();
+			expr_freelist.push_back(initializer);
 		}
 		if (initializer == nullptr && is_final) {
-			for (Expr* it : initializers) {
-				if (it != nullptr) {
-					expression_free(it);
-				}
-			}
 			throw error(previous(), "Constant must have an initializer.");
 		}
 		initializers.push_back(initializer);
 	}
 
 	if (!check(TokenType::semicolon)) {
-		for (Expr* initializer : initializers) {
-			if (initializer != nullptr) {
-				expression_free(initializer);
-			}
-		}
 		throw error(previous(), "Expected ';' after variable declaration.");
 	}
 	advance();
@@ -168,7 +216,8 @@ Stmt* Parser::var_declaration(Token type, Visibility visibility, bool is_static,
 Stmt* Parser::statement() {
 	if (match(TokenType::sout)) return print_statement(false);
 	if (match(TokenType::soutln)) return print_statement(true);
-	if (match(TokenType::curly_left)) return block_statement();
+	if (match(TokenType::_return)) return return_statement();
+	if (match(TokenType::curly_left)) return DBG_new Stmt_Block{ block_statement() };
 	if (match(TokenType::_if)) return if_statement();
 	if (match(TokenType::_while)) return while_statement();
 	if (match(TokenType::_for)) return for_statement();
@@ -211,8 +260,8 @@ Stmt* Parser::for_statement() {
 		condition = parse_expression();
 	}
 	if (!match(TokenType::semicolon)) {
-		statement_free(initializer);
-		expression_free(condition);
+		stmt_free(initializer);
+		expr_free(condition);
 		throw JAVA_RUNTIME_ERROR(previous(), "Expected ';' after 'for' condition.");
 	}
 
@@ -221,9 +270,9 @@ Stmt* Parser::for_statement() {
 		increment = parse_expression();
 	}
 	if (!match(TokenType::paren_right)) {
-		statement_free(initializer);
-		expression_free(condition);
-		expression_free(increment);
+		stmt_free(initializer);
+		expr_free(condition);
+		expr_free(increment);
 		throw JAVA_RUNTIME_ERROR(previous(), "Expected ')' after 'for' increment.");
 	}
 
@@ -266,7 +315,8 @@ Stmt* Parser::while_statement() {
 	Token token = previous();
 	consume(TokenType::paren_left, "Expect '(' before 'while' condition.");
 	Expr* condition = parse_expression();
-	consume(TokenType::paren_right, condition, "Expect ')' after 'while' condition.");
+	expr_freelist.push_back(condition);
+	consume(TokenType::paren_right, "Expect ')' after 'while' condition.");
 	Stmt* body = statement();
 	this->loop_level--;
 
@@ -278,9 +328,10 @@ Stmt* Parser::if_statement() {
 
 	consume(TokenType::paren_left, "Expect '(' after 'if'.");
 	Expr* condition = parse_expression();
-	consume(TokenType::paren_right, condition, "Expect ')' after condition in 'if'.");
+	expr_freelist.push_back(condition);
+	consume(TokenType::paren_right, "Expect ')' after condition in 'if'.");
 	if (is_at_end()) {
-		expression_free(condition);
+		expr_free(condition);
 		throw error(peek(), "Expect statement after ')' in 'if'.");
 	}
 	Stmt* then_branch = statement();
@@ -291,32 +342,32 @@ Stmt* Parser::if_statement() {
 			advance(); // consume else
 			Token else_if_token = advance(); // consume if
 			if (!match(TokenType::paren_left)) {
-				expression_free(condition);
-				statement_free(then_branch);
+				expr_free(condition);
+				stmt_free(then_branch);
 				for (Else_If else_if : else_ifs) {
-					if (else_if.condition != nullptr) expression_free((Expr*)else_if.condition);
-					if (else_if.then_branch != nullptr) statement_free((Stmt*)else_if.then_branch);
+					if (else_if.condition != nullptr) expr_free((Expr*)else_if.condition);
+					if (else_if.then_branch != nullptr) stmt_free((Stmt*)else_if.then_branch);
 				}
 				throw error(peek(), "Expected '(' after 'else if'.");
 			}
 			Expr* else_if_condition = parse_expression();
 			if (!match(TokenType::paren_right)) {
-				expression_free(condition);
-				statement_free(then_branch);
-				expression_free(else_if_condition);
+				expr_free(condition);
+				stmt_free(then_branch);
+				expr_free(else_if_condition);
 				for (Else_If else_if : else_ifs) {
-					if (else_if.condition != nullptr) expression_free((Expr*)else_if.condition);
-					if (else_if.then_branch != nullptr) statement_free((Stmt*)else_if.then_branch);
+					if (else_if.condition != nullptr) expr_free((Expr*)else_if.condition);
+					if (else_if.then_branch != nullptr) stmt_free((Stmt*)else_if.then_branch);
 				}
 				throw error(peek(), "Expected ')' after condition in 'else if'.");
 			}
 			if (is_at_end()) {
-				expression_free(condition);
-				statement_free(then_branch);
-				expression_free(else_if_condition);
+				expr_free(condition);
+				stmt_free(then_branch);
+				expr_free(else_if_condition);
 				for (Else_If else_if : else_ifs) {
-					if (else_if.condition != nullptr) expression_free((Expr*)else_if.condition);
-					if (else_if.then_branch != nullptr) statement_free((Stmt*)else_if.then_branch);
+					if (else_if.condition != nullptr) expr_free((Expr*)else_if.condition);
+					if (else_if.then_branch != nullptr) stmt_free((Stmt*)else_if.then_branch);
 				}
 				throw error(peek(), "Expected statement after ')' in 'else if'.");
 			}
@@ -339,26 +390,56 @@ Stmt* Parser::if_statement() {
 Stmt* Parser::print_statement(const bool has_newline) {
 	consume(TokenType::paren_left, "Expected '(' before expression in print statement.");
 	Expr* value = parse_expression();
-	consume(TokenType::paren_right, value, "Expected ')' after expression in print statement.");
-	consume(TokenType::semicolon, value, "Expected ';' after ')' in print statement.");
+	expr_freelist.push_back(value);
+	consume(TokenType::paren_right, "Expected ')' after expression in print statement.");
+	consume(TokenType::semicolon, "Expected ';' after ')' in print statement.");
 	return DBG_new Stmt_Print(value, has_newline);
+}
+
+Stmt* Parser::return_statement() {
+	if (this->func_level != 1) {
+		throw error(previous(), "Expected return statement in a function body.");
+	}
+	Token name = previous();
+
+	Expr* value = nullptr;
+	if (!check(TokenType::semicolon)) {
+		value = parse_expression();
+		expr_freelist.push_back(value);
+	}
+	consume(TokenType::semicolon, "Expected ';' in return statement.");
+
+	return DBG_new Stmt_Return{name.lexeme, name.line, name.column, value};
 }
 
 Stmt* Parser::expression_statement() {
 	Expr* value = parse_expression();
-	consume(TokenType::semicolon, value, "Expected ';' after value in expression statement.");
+	expr_freelist.push_back(value);
+	consume(TokenType::semicolon, "Expected ';' after value in expression statement.");
 	return DBG_new Stmt_Expression(value);
 }
 
-Stmt* Parser::block_statement() {
-	std::vector<Stmt*> statements = {};
-
+std::vector<Stmt*>* Parser::heap_block_statement() {
+	auto statements = DBG_new std::vector<Stmt*>();
 	while (!check(TokenType::curly_right) && !is_at_end()) {
-		statements.emplace_back(declaration());
+		Stmt* stmt = declaration();
+		statements->emplace_back(stmt);
+		stmt_freelist.push_back(stmt);
 	}
+	if (!check(TokenType::curly_right)) { delete statements; }
+	consume(TokenType::curly_right, "Expect '}' at the end of the block.");
+	return statements;
+}
 
-	consume(TokenType::curly_right, statements, "Expect '}' at the end of the block.");
-	return DBG_new Stmt_Block{ statements };
+std::vector<Stmt*> Parser::block_statement() {
+	std::vector<Stmt*> statements = {};
+	while (!check(TokenType::curly_right) && !is_at_end()) {
+		Stmt* stmt = declaration();
+		statements.emplace_back(stmt);
+		stmt_freelist.push_back(stmt);
+	}
+	consume(TokenType::curly_right, "Expect '}' at the end of the block.");
+	return statements;
 }
 
 Expr* Parser::expression() {
@@ -369,7 +450,7 @@ Expr* Parser::comma_operator() {
 	Expr* expr = ternary_conditional();
 
 	while (match(TokenType::comma)) {
-		expression_free(expr);
+		expr_free(expr);
 		expr = ternary_conditional();
 	}
 
@@ -381,12 +462,15 @@ Expr* Parser::ternary_conditional() {
 
 	if (match(TokenType::question)) {
 		Token question_mark = previous();
+		expr_freelist.push_back(expr);
+
 		if (is_at_end()) {
-			expression_free(expr);
 			throw error(question_mark, "Expected then branch after '?' in ternary.");
 		}
+
 		Expr *then = expression();
-		consume(TokenType::colon, expr, then, "Expected ':' after then branch in ternary operator.");
+		expr_freelist.push_back(then);
+		consume(TokenType::colon, "Expected ':' after then branch in ternary operator.");
 		Expr *otherwise = ternary_conditional();
 		expr = DBG_new Expr_Ternary{ expr, then, otherwise, question_mark };
 	}
@@ -404,7 +488,7 @@ Expr* Parser::assignment() {
 		switch (expr->get_type()) {
 			case ExprType::variable: {
 				Expr_Variable* variable = dynamic_cast<Expr_Variable*>(expr);
-				return DBG_new Expr_Assign{variable, variable->name, rhs};
+				return DBG_new Expr_Assign{variable, variable->name, variable->line, variable->column, rhs};
 			}
 			case ExprType::get: {
 				Expr_Get* get = dynamic_cast<Expr_Get*>(expr);
@@ -412,8 +496,8 @@ Expr* Parser::assignment() {
 			}
 		}
 
-		expression_free(expr);
-		expression_free(rhs);
+		expr_free(expr);
+		expr_free(rhs);
 		throw error(equals, "Invalid assignment target.");
 	}
 
@@ -589,26 +673,27 @@ Expr* Parser::call() {
 
 	while (true) {
 		if (match(TokenType::paren_left)) {
-			std::vector<Expr*> *arguments = DBG_new std::vector<Expr*>;
+			expr_freelist.push_back(expr);
+			auto arguments = DBG_new std::vector<ParseCallInfo>;
 			if (!check(TokenType::paren_right)) {
 				do {
 					if (arguments->size() >= 255) {
-						expression_free(expr);
-						for (int i = 0; i < arguments->size(); i++)
-							expression_free(arguments->at(i));
 						delete arguments;
 						throw error(peek(), "Can't have more than 255 arguments.");
 					}
 					// Always call 1 level of precedence above the comma operator.
 					Expr* argument_expr = ternary_conditional();
-					arguments->emplace_back(argument_expr);
+					expr_freelist.push_back(argument_expr);
+					arguments->emplace_back(argument_expr, peek().line, peek().column);
 				} while (match(TokenType::comma));
 			}
-			Token paren = consume(TokenType::paren_right, expr, arguments, "Expected ')' after function call.");
+			if (!check(TokenType::paren_right)) { delete arguments; }
+			Token paren = consume(TokenType::paren_right, "Expected ')' after function call.");
 			expr = DBG_new Expr_Call{expr, paren, arguments};
 		}
 		else if (match(TokenType::dot)) {
-			Token name = consume(TokenType::identifier, expr, "Expected property name after '.'.");
+			expr_freelist.push_back(expr);
+			Token name = consume(TokenType::identifier, "Expected property name after '.'.");
 			expr = DBG_new Expr_Get{expr, name};
 		}
 		else {
@@ -640,7 +725,8 @@ Expr *Parser::primary() {
 
 	if (match(TokenType::identifier)) {
 		bool is_function = (peek().type == TokenType::paren_left);
-		return DBG_new Expr_Variable{previous(), is_function};
+		Token name = previous();
+		return DBG_new Expr_Variable{name.lexeme, name.line, name.column, is_function};
 	}
 
 	if (match(TokenType::paren_left)) {
@@ -653,6 +739,11 @@ Expr *Parser::primary() {
 }
 
 Parser::Error Parser::error(Token token, const char *fmt, ...) {
+	for (Expr* expr: expr_freelist) { expr_free(expr); }
+	for (Stmt* stmt: stmt_freelist) { stmt_free(stmt); }
+	expr_freelist.clear();
+	stmt_freelist.clear();
+
 	va_list args;
 	va_start(args, fmt);
 	JavaError::error(token, fmt, args);
@@ -661,6 +752,11 @@ Parser::Error Parser::error(Token token, const char *fmt, ...) {
 }
 
 Parser::Error Parser::error(Token token, const char *fmt, va_list args) {
+	for (Expr* expr : expr_freelist) { expr_free(expr); }
+	for (Stmt* stmt : stmt_freelist) { stmt_free(stmt); }
+	expr_freelist.clear();
+	stmt_freelist.clear();
+
 	JavaError::error(token, fmt, args);
 	return {};
 }
@@ -697,37 +793,13 @@ void Parser::synchronize() {
 	}
 }
 
-Token Parser::consume(TokenType type, const char* fmt, ...) {
-	if (check(type)) return advance();
-
-	va_list ap;
-	va_start(ap, fmt);
-	Error e = error(peek(), fmt, ap);
-	va_end(ap);
-	throw e;
-}
-
-Token Parser::consume(TokenType type, Expr* to_free, const char* fmt, ...) {
-	if (check(type)) return advance();
-
-	expression_free(to_free);
-	va_list ap;
-	va_start(ap, fmt);
-	Error e = error(peek(), fmt, ap);
-	va_end(ap);
-	throw e;
-}
-
-Token Parser::consume(TokenType type, Expr* to_free, std::vector<Expr*> *to_free_list, const char* fmt, ...) {
-	if (check(type)) return advance();
-
-	expression_free(to_free);
-	if (to_free_list != nullptr) {
-		for (int i = 0; i < to_free_list->size(); i++) {
-			expression_free(to_free_list->at(i));
-		}
-		delete to_free_list;
+Token Parser::consume_java_type(const char* fmt, ...) {
+	if (is_token_type_java_type(peek().type)) {
+		expr_freelist.clear();
+		stmt_freelist.clear();
+		return advance();
 	}
+
 	va_list ap;
 	va_start(ap, fmt);
 	Error e = error(peek(), fmt, ap);
@@ -735,11 +807,9 @@ Token Parser::consume(TokenType type, Expr* to_free, std::vector<Expr*> *to_free
 	throw e;
 }
 
-Token Parser::consume(TokenType type, Expr* to_free_0, Expr* to_free_1, const char* fmt, ...) {
-	if (check(type)) return advance();
+Token Parser::consume_no_reset(TokenType type, const char* fmt, ...) {
+	if (check(type)) return advance(); 
 
-	expression_free(to_free_0);
-	expression_free(to_free_1);
 	va_list ap;
 	va_start(ap, fmt);
 	Error e = error(peek(), fmt, ap);
@@ -747,11 +817,11 @@ Token Parser::consume(TokenType type, Expr* to_free_0, Expr* to_free_1, const ch
 	throw e;
 }
 
-Token Parser::consume(TokenType type, const std::vector<Stmt*> &to_free, const char* fmt, ...) {
-	if (check(type)) return advance();
-
-	for (int i = 0; i < to_free.size(); i++) {
-		statement_free(to_free.at(i));
+Token Parser::consume(TokenType type, const char* fmt, ...) {
+	if (check(type)) {
+		expr_freelist.clear();
+		stmt_freelist.clear();
+		return advance();
 	}
 
 	va_list ap;
@@ -804,15 +874,7 @@ bool Parser::match(size_t n, ...) {
 
 bool Parser::check_java_type() {
 	if (is_at_end()) return false;
-	return peek().type == TokenType::type_boolean ||
-		   peek().type == TokenType::type_byte    ||
-	       peek().type == TokenType::type_char    || 
-	       peek().type == TokenType::type_int     || 
-	       peek().type == TokenType::type_long    || 
-	       peek().type == TokenType::type_float   || 
-	       peek().type == TokenType::type_double  || 
-	       peek().type == TokenType::type_String  || 
-	       peek().type == TokenType::type_ArrayList;
+	return is_token_type_java_type(peek().type);
 }
 
 bool Parser::check(TokenType type) {

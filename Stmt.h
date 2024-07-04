@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include "Expr.h"
 #include "Visibility.h"
 
@@ -8,8 +9,10 @@ enum class StmtType {
 	Block,
 	Continue,
 	Expression,
+	Function,
 	If,
 	Print,
+	Return,
 	Var,
 	While,
 };
@@ -17,7 +20,7 @@ enum class StmtType {
 
 struct Stmt { inline virtual StmtType get_type() = 0; };
 
-void statement_free(Stmt* statement);
+void stmt_free(Stmt* statement);
 
 struct Stmt_Break : public Stmt {
 	inline StmtType get_type() override { return StmtType::Break; }
@@ -45,6 +48,33 @@ struct Stmt_Expression : public Stmt {
 	inline StmtType get_type() override { return StmtType::Expression; }
 };
 
+struct JavaTypeInfo {
+	JavaType type;
+	std::string name;
+};
+
+struct Stmt_Function : public Stmt {
+	const Token name;
+	const Visibility visibility;
+	const bool is_static;
+	const std::vector<std::pair<JavaTypeInfo, std::string>>* params;
+	const std::vector<Stmt*>* body;
+
+	Stmt_Function(const Token p_name,
+				  const Visibility p_visibility,
+				  const bool p_is_static,
+				  const std::vector<std::pair<JavaTypeInfo, std::string>>* p_params,
+				  const std::vector<Stmt*>* p_body):
+		name(p_name),
+		visibility(p_visibility),
+		is_static(p_is_static),
+		params(p_params),
+		body(p_body)
+	{}
+
+	inline StmtType get_type() override { return StmtType::Function; }
+};
+
 struct Stmt_Print : public Stmt {
 	const Expr* expression;
 	const bool has_newline;
@@ -53,6 +83,17 @@ struct Stmt_Print : public Stmt {
 		expression(p_expression), has_newline(p_has_newline) {}
 
 	inline StmtType get_type() override { return StmtType::Print; }
+};
+
+struct Stmt_Return : public Stmt {
+	const std::string keyword;
+	uint32_t line, column;
+	const Expr* value;
+
+	Stmt_Return(const std::string p_keyword, uint32_t p_line, uint32_t p_column, const Expr* p_value):
+		keyword(p_keyword), line(p_line), column(p_column), value(p_value) {}
+
+	inline StmtType get_type() override { return StmtType::Return; }
 };
 
 struct Stmt_Var : public Stmt {

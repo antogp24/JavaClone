@@ -176,10 +176,10 @@ void Lexer::scan_number_literal() {
 
 	JavaValue value = {};
 
-	#define case_number(T, strconv_fn)                           \
-		case Number_Type::##T: {                                 \
-			value.##T = (Java##T)strconv_fn(name.c_str());       \
-			add_token(TokenType::number, JavaType::##T, value);  \
+	#define case_number(T, strconv_fn)                         \
+		case Number_Type::T: {                                 \
+			value.T = (Java##T)strconv_fn(name.c_str());       \
+			add_token(TokenType::number, JavaType::T, value);  \
 		} break;
 
 	switch (number_type) {

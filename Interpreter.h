@@ -1,18 +1,19 @@
 #pragma once
 
-#include "JavaObject.h"
 #include "Expr.h"
 #include "Stmt.h"
+#include "JavaObject.h"
 #include "Environment.h"
 
 class Interpreter {
 public:
-	void interpret(std::vector<Stmt*>* statements);
 	Interpreter();
 	~Interpreter();
+	void interpret(std::vector<Stmt*>* statements);
+	void execute_block(const std::vector<Stmt*> &statements, Environment *environment);
+	static struct Return { JavaObject value; };
 private:
 	void execute_statement(Stmt* statement);
-	void execute_block(const std::vector<Stmt*> &statements, Environment *environment);
 	JavaObject evaluate(Expr *expression);
 	JavaObject evaluate_binary(Expr *expression);
 	JavaObject evaluate_logical(Expr* expression);
@@ -25,6 +26,7 @@ private:
 private:
 	bool broke = false;
 	bool continued = false;
+public:
 	Environment* globals;
 	Environment* environment;
 };

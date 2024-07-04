@@ -1,6 +1,14 @@
 #include "Visibility.h"
 #include "Token.h"
 
+#if defined(_DEBUG) && (defined(_WIN32) || defined(_WIN64))
+	#include <stdlib.h>
+	#include <crtdbg.h>
+	#define DBG_new new (_NORMAL_BLOCK, __FILE__, __LINE__)
+#else
+	#define DBG_new new
+#endif
+
 Visibility visibility_from_token_type(TokenType type) {
 	switch (type) {
 		case TokenType::_private: return Visibility::Private;

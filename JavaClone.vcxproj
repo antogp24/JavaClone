@@ -135,6 +135,8 @@
     <ClCompile Include="Expr.cpp" />
     <ClCompile Include="FolderReader.cpp" />
     <ClCompile Include="Interpreter.cpp" />
+    <ClCompile Include="JavaFunction.cpp" />
+    <ClCompile Include="JavaNativeFunction.h" />
     <ClCompile Include="JavaObject.cpp" />
     <ClCompile Include="Lexer.cpp" />
     <ClCompile Include="Main.cpp" />
@@ -146,11 +148,14 @@
   <ItemGroup>
     <ClInclude Include="Arena.h" />
     <ClInclude Include="AstPrinter.h" />
+    <ClInclude Include="Call_Info.h" />
     <ClInclude Include="Color.h" />
     <ClInclude Include="Environment.h" />
     <ClInclude Include="Error.h" />
     <ClInclude Include="FolderReader.h" />
     <ClInclude Include="Interpreter.h" />
+    <ClInclude Include="JavaCallable.h" />
+    <ClInclude Include="JavaFunction.h" />
     <ClInclude Include="JavaObject.h" />
     <ClInclude Include="Lexer.h" />
     <ClInclude Include="Expr.h" />

@@ -1,6 +1,14 @@
 #include "Stmt.h"
 
-void statement_free(Stmt* statement) {
+#if defined(_DEBUG) && (defined(_WIN32) || defined(_WIN64))
+	#include <stdlib.h>
+	#include <crtdbg.h>
+	#define DBG_new new (_NORMAL_BLOCK, __FILE__, __LINE__)
+#else
+	#define DBG_new new
+#endif
+
+void stmt_free(Stmt* statement) {
 	if (statement == nullptr) return;
 
 	switch (statement->get_type()) {
@@ -12,7 +20,7 @@ void statement_free(Stmt* statement) {
 		case StmtType::Block: {
 			Stmt_Block* stmt = dynamic_cast<Stmt_Block*>(statement);
 			for (int i = 0; i < stmt->statements.size(); i++) {
-				statement_free(stmt->statements.at(i));
+				stmt_free(stmt->statements.at(i));
 			}
 			delete stmt;
 		} break;
@@ -24,41 +32,53 @@ void statement_free(Stmt* statement) {
 
 		case StmtType::If: {
 			Stmt_If* stmt = dynamic_cast<Stmt_If*>(statement);
-			expression_free((Expr*)stmt->condition);
-			statement_free((Stmt*)stmt->then_branch);
+			expr_free((Expr*)stmt->condition);
+			stmt_free((Stmt*)stmt->then_branch);
 			for (int i = 0; i < stmt->else_ifs.size(); i++) {
 				const Else_If &else_if = stmt->else_ifs.at(i);
-				expression_free((Expr*)else_if.condition);
-				statement_free((Stmt*)else_if.then_branch);
+				expr_free((Expr*)else_if.condition);
+				stmt_free((Stmt*)else_if.then_branch);
 			}
-			statement_free((Stmt*)stmt->else_branch);
+			stmt_free((Stmt*)stmt->else_branch);
 			delete stmt;
 		} break;
 
 		case StmtType::Expression: {
 			Stmt_Expression* stmt = dynamic_cast<Stmt_Expression*>(statement);
-			expression_free((Expr*)stmt->expression);
+			expr_free((Expr*)stmt->expression);
+			delete stmt;
+		} break;
+
+		case StmtType::Function: {
+			Stmt_Function* stmt = dynamic_cast<Stmt_Function*>(statement);
+			// Body and params are deleted at the Interpreter's destructor.
 			delete stmt;
 		} break;
 
 		case StmtType::Print: {
 			Stmt_Print* stmt = dynamic_cast<Stmt_Print*>(statement);
-			expression_free((Expr*)stmt->expression);
+			expr_free((Expr*)stmt->expression);
+			delete stmt;
+		} break;
+
+		case StmtType::Return: {
+			Stmt_Return* stmt = dynamic_cast<Stmt_Return*>(statement);
+			expr_free((Expr*)stmt->value);
 			delete stmt;
 		} break;
 
 		case StmtType::Var: {
 			Stmt_Var* stmt = dynamic_cast<Stmt_Var*>(statement);
 			for (int i = 0; i < stmt->initializers.size(); i++) {
-				expression_free(stmt->initializers.at(i));
+				expr_free(stmt->initializers.at(i));
 			}
 			delete stmt;
 		} break;
 
 		case StmtType::While: {
 			Stmt_While* stmt = dynamic_cast<Stmt_While*>(statement);
-			expression_free((Expr*)stmt->condition);
-			statement_free((Stmt*)stmt->body);
+			expr_free((Expr*)stmt->condition);
+			stmt_free((Stmt*)stmt->body);
 			delete stmt;
 		} break;
 	}

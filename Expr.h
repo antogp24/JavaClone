@@ -2,6 +2,7 @@
 
 #include "Token.h"
 #include <vector>
+#include <string>
 
 enum class ExprType {
 	assign,
@@ -20,16 +21,20 @@ enum class ExprType {
 
 struct Expr { virtual inline ExprType get_type() = 0; };
 
-void expression_free(Expr *expr);
+void expr_free(Expr *expr);
 
 struct Expr_Assign : public Expr {
 	const Expr* lhs;
-	const Token lhs_name;
+	const std::string lhs_name;
+	const uint32_t line;
+	const uint32_t column;
 	const Expr* rhs;
 
-	Expr_Assign(const Expr* _lhs, const Token _lhs_name, const Expr* _rhs):
+	Expr_Assign(const Expr* _lhs, const std::string _lhs_name, const uint32_t _line, const uint32_t _column, const Expr* _rhs):
 		lhs(_lhs),
 		lhs_name(_lhs_name),
+		line(_line),
+		column(_column),
 		rhs(_rhs)
 	{}
 
@@ -50,12 +55,17 @@ struct Expr_Binary : public Expr {
 	inline ExprType get_type() override { return ExprType::binary; }
 };
 
+struct ParseCallInfo {
+	Expr* expr;
+	uint32_t line, column;
+};
+
 struct Expr_Call : public Expr {
 	const Expr* callee;
 	const Token paren;
-	const std::vector<Expr*> *arguments;
+	const std::vector<ParseCallInfo> *arguments;
 
-	Expr_Call(const Expr* _callee, const Token _paren, const std::vector<Expr*> *_arguments) :
+	Expr_Call(const Expr* _callee, const Token _paren, const std::vector<ParseCallInfo> *_arguments) :
 		callee(_callee),
 		paren(_paren),
 		arguments(_arguments)
@@ -164,11 +174,15 @@ struct Expr_Unary : public Expr {
 };
 
 struct Expr_Variable : public Expr {
-	const Token name;
+	const std::string name;
+	const uint32_t line;
+	const uint32_t column;
 	const bool is_function;
 
-	Expr_Variable(const Token _name, const bool _is_function) :
+	Expr_Variable(const std::string _name, const uint32_t _line, const uint32_t _column, const bool _is_function) :
 		name(_name),
+		line(_line),
+		column(_column),
 		is_function(_is_function)
 	{}
 

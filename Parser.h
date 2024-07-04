@@ -25,10 +25,13 @@ private:
 	Stmt* break_statement();
 	Stmt* continue_statement();
 	Stmt* print_statement(const bool has_newline);
+	Stmt* return_statement();
 	Stmt* expression_statement();
-	Stmt* block_statement();
+	std::vector<Stmt*> block_statement();
+	std::vector<Stmt*>* heap_block_statement();
 	Stmt* complex_var_declaration(TokenType first_modifier);
 	Stmt* var_declaration(Token type, Visibility visibility, bool is_static, bool is_final);
+	Stmt* fun_declaration(Token return_type, Token name, Visibility visibility, bool is_static);
 
 	Expr* expression();
 	Expr* comma_operator();
@@ -53,11 +56,9 @@ private:
 	Error error(Token token, const char* fmt, va_list args);
 	void synchronize();
 
+	Token consume_java_type(const char *fmt, ...);
+	Token consume_no_reset(TokenType type, const char* fmt, ...);
 	Token consume(TokenType type, const char *fmt, ...);
-	Token consume(TokenType type, Expr* to_free, const char *fmt, ...);
-	Token consume(TokenType type, Expr* to_free, std::vector<Expr*> *to_free_list, const char* fmt, ...);
-	Token consume(TokenType type, Expr* to_free_0, Expr* to_free_1, const char *fmt, ...);
-	Token consume(TokenType type, const std::vector<Stmt*> &to_free, const char *fmt, ...);
 	bool match_any_modifier();
 	bool match_java_type();
 	bool match(TokenType type);
@@ -75,4 +76,7 @@ private:
 	const std::vector<Token> &tokens;
 	uint32_t current = 0;
 	uint32_t loop_level = 0;
+	uint32_t func_level = 0;
+	std::vector<Expr*> expr_freelist;
+	std::vector<Stmt*> stmt_freelist;
 };

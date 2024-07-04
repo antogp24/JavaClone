@@ -23,6 +23,23 @@ bool is_java_type_number(JavaType type) {
 	}
 }
 
+bool is_token_type_java_type(TokenType type) {
+	switch (type) {
+		case TokenType::type_void:
+		case TokenType::type_boolean:
+		case TokenType::type_byte:
+		case TokenType::type_char:
+		case TokenType::type_int:
+		case TokenType::type_long:
+		case TokenType::type_float:
+		case TokenType::type_double:
+		case TokenType::type_String:
+		case TokenType::type_ArrayList:
+			return true;
+	}
+	return false;
+}
+
 bool is_token_type_number(TokenType type) {
 	return is_java_type_number(token_type_to_java_type(type));
 }
@@ -30,6 +47,7 @@ bool is_token_type_number(TokenType type) {
 JavaType token_type_to_java_type(TokenType type) {
 	switch (type) {
 		case TokenType::_null: return JavaType::_null;
+		case TokenType::type_void: return JavaType::_void;
 		case TokenType::type_boolean: return JavaType::_boolean;
 		case TokenType::type_byte: return JavaType::_byte;
 		case TokenType::type_char: return JavaType::_char;
@@ -45,6 +63,7 @@ JavaType token_type_to_java_type(TokenType type) {
 const char* java_type_cstring(JavaType type) {
 	switch (type) {
 		case JavaType::_null: return "null";
+		case JavaType::_void: return "void";
 		case JavaType::_boolean: return "boolean";
 		case JavaType::_byte: return "byte";
 		case JavaType::_char: return "char";

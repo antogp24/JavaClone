@@ -50,7 +50,7 @@ struct AstPrinter {
 				print((Expr*)expr->callee);
 				for (int i = 0; i < expr->arguments->size(); i++) {
 					printf(" ");
-					print((Expr*)expr->arguments->at(i));
+					print((Expr*)expr->arguments->at(i).expr);
 					if (i != expr->arguments->size() - 1) {
 						printf(", ");
 					}
@@ -108,7 +108,7 @@ struct AstPrinter {
 			case ExprType::variable: {
 				Expr_Variable* expr = dynamic_cast<Expr_Variable*>(_expr);
 				printf(expr->is_function ? "(fn " : "(var ");
-				printf("%s)", expr->name.lexeme);
+				printf("%s)", expr->name.c_str());
 			} break;
 		}
 	}

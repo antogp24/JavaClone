@@ -1,6 +1,11 @@
 #include "Interpreter.h"
-#include "Error.h"
+#include "JavaCallable.h"
+#include "JavaNativeFunction.h"
+#include "JavaFunction.h"
 #include "AstPrinter.h"
+#include "Error.h"
+
+#include <chrono>
 #include <assert.h>
 
 #if defined(_DEBUG) && (defined(_WIN32) || defined(_WIN64))
@@ -15,10 +20,44 @@ extern bool REPL;
 
 Interpreter::Interpreter() {
 	globals = DBG_new Environment();
+	globals->define_native_function("clock",
+		[]() { return 0; },
+		[](void* interpreter, std::vector<ArgumentInfo>) {
+			using namespace std::chrono;
+			Java_long result = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+			return JavaObject{ JavaType::_long, JavaValue{ ._long = result } };
+		},
+		[]() { return "<native_fn clock>"; });
 	environment = globals;
 }
 
 Interpreter::~Interpreter() {
+	for (auto const& [key, value] : globals->values) {
+		if (value.value.type == JavaType::Function) {
+			JavaCallable* function = (JavaCallable*)globals->get_function_ptr(key);
+
+			switch (function->get_type()) {
+				case CallableType::UserDefined: {
+					JavaFunction* userfn = dynamic_cast<JavaFunction*>(function);
+					const auto& body = userfn->declaration_body;
+
+					for (int i = 0; i < body->size(); i++) {
+						stmt_free(body->at(i));
+					}
+
+					delete userfn->declaration_body;
+					delete userfn->declaration_params;
+					delete userfn;
+				} break;
+
+				case CallableType::Builtin: {
+					JavaNativeFunction* nativefn = (JavaNativeFunction*)function;
+					delete nativefn;
+				} break;
+			}
+		}
+	}
+
 	delete globals;
 }
 
@@ -74,6 +113,22 @@ void Interpreter::execute_statement(Stmt* statement) {
 			}
 		} break;
 
+		case StmtType::Function: {
+			Stmt_Function* stmt = dynamic_cast<Stmt_Function*>(statement);
+			void* fn = DBG_new JavaFunction(stmt);
+			JavaVariable function = {
+				JavaObject{
+					JavaType::Function,
+					JavaValue{ .function = fn }
+				},
+				stmt->visibility,
+				stmt->is_static,
+				true,
+				false,
+			};
+			globals->define(stmt->name, function);
+		} break;
+
 		case StmtType::If: { 
 			Stmt_If* stmt = dynamic_cast<Stmt_If*>(statement);
 			JavaObject condition = evaluate((Expr*)stmt->condition);
@@ -112,6 +167,13 @@ void Interpreter::execute_statement(Stmt* statement) {
 			if (stmt->has_newline) printf("\n");
 		} break;
 
+		case StmtType::Return: {
+			Stmt_Return* stmt = dynamic_cast<Stmt_Return*>(statement);
+			JavaObject value = { JavaType::none, {} };
+			if (stmt->value != nullptr) value = evaluate((Expr*)stmt->value);
+			throw Return{ value };
+		} break;
+
 		case StmtType::Var: {
 			Stmt_Var* stmt = dynamic_cast<Stmt_Var*>(statement);
 			JavaObject value = { JavaType::none, JavaValue{} };
@@ -132,7 +194,7 @@ void Interpreter::execute_statement(Stmt* statement) {
 					if (is_token_type_number(stmt->type.type) && !is_java_type_number(value.type) ||
 					   !is_token_type_number(stmt->type.type) && is_java_type_number(value.type))
 					{
-						throw JAVA_RUNTIME_ERROR(stmt->type, "Can't do an implicit cast between '%s' and '%s'.", java_type_cstring(value.type), stmt->type.lexeme);
+						throw JAVA_RUNTIME_ERROR_VA(stmt->type, "Can't do an implicit cast between '%s' and '%s'.", java_type_cstring(value.type), stmt->type.lexeme);
 					}
 
 					value.is_null = (value.type == JavaType::_null);
@@ -192,24 +254,24 @@ JavaObject Interpreter::evaluate_binary(Expr* expression) {
 	#define op_error(message) throw JAVA_RUNTIME_ERROR(expr->_operator, message)
 
 	// These are intended for numbers.
-	#define case_binary(T, op)                                               \
-		case JavaType::##T: {                                                \
-			result.value.##T = java_cast_to##T(lhs) op java_cast_to##T(rhs); \
+	#define case_binary(T, op)                                             \
+		case JavaType::T: {                                                \
+			result.value.T = java_cast_to##T(lhs) op java_cast_to##T(rhs); \
 		} break;
 
 	// Used for division and remainder.
 	#define case_binary_right_not_zero(T, op)                  \
-		case JavaType::##T: {                                  \
+		case JavaType::T: {                                    \
 			Java##T right = java_cast_to##T(rhs);              \
 			if (right == 0) {                                  \
 				op_error("Right hand side can't be zero");     \
 			}                                                  \
-			result.value.##T = java_cast_to##T(lhs) op right;  \
+			result.value.T = java_cast_to##T(lhs) op right;    \
 		} break;
 
 	// In case macro replace 'case_binary' or 'case_binary_right_non_zero'
 	#define case_op(op, T, case_macro)               \
-		case TokenType::##T: {                       \
+		case TokenType::T: {                         \
 			if (smaller < JavaType::_byte)           \
 			    op_error("Only numbers");            \
 			switch (bigger) {                        \
@@ -225,14 +287,14 @@ JavaObject Interpreter::evaluate_binary(Expr* expression) {
 
 	// Intended for operators with boolean results.
 	#define case_binary_bool(T, op)                                               \
-		case JavaType::##T: {                                                     \
+		case JavaType::T: {                                                       \
 			result.type = JavaType::_boolean;                                     \
 			result.value._boolean = java_cast_to##T(lhs) op java_cast_to##T(rhs); \
 		} break;
 
 	// Intended for operators with boolean results.
 	#define case_op_bool(op, T)                      \
-		case TokenType::##T: {                       \
+		case TokenType::T: {                         \
 			if (smaller < JavaType::_byte)           \
 			    op_error("Only numbers");            \
 			switch (bigger) {                        \
@@ -249,7 +311,7 @@ JavaObject Interpreter::evaluate_binary(Expr* expression) {
 
 	// Same thing but for whole numbers.
 	#define case_op_whole(op, T, case_macro)               \
-		case TokenType::##T: {                             \
+		case TokenType::T: {                               \
 			if (smaller < JavaType::_byte)                 \
 			    op_error("Only numbers");                  \
 			switch (bigger) {                              \
@@ -301,14 +363,14 @@ JavaObject Interpreter::evaluate_unary(Expr* expression) {
 	#define op_error(message) throw JAVA_RUNTIME_ERROR(expr->_operator, message)
 
 	// This is intended for numbers and booleans.
-	#define case_unary(op, T)                                          \
-		case JavaType::##T: {                                          \
-			result.value.##T = result.value.##T = op right.value.##T;  \
+	#define case_unary(op, T)                                    \
+		case JavaType::T: {                                      \
+			result.value.T = result.value.T = op right.value.T;  \
 		} break;
 
 	// This is intended for numbers.
 	#define case_op_unary(op, T)                              \
-		case TokenType::##T: {                                \
+		case TokenType::T: {                                  \
 			JavaObject result = { right.type, JavaValue{} };  \
 			switch (right.type) {                             \
 				case_unary(op, _byte)                         \
@@ -323,7 +385,7 @@ JavaObject Interpreter::evaluate_unary(Expr* expression) {
 
 	// This is intended for whole numbers.
 	#define case_op_unary_whole(op, T)                        \
-		case TokenType::##T: {                                \
+		case TokenType::T: {                                  \
 			JavaObject result = { right.type, JavaValue{} };  \
 			switch (right.type) {                             \
 				case_unary(op, _byte)                         \
@@ -350,7 +412,7 @@ JavaObject Interpreter::evaluate_unary(Expr* expression) {
 		#define case_cast(T) case_unary((Java##T), T)
 		#define case_cast_number(T)                                                           \
 			case TokenType::type##T: {                                                        \
-				JavaObject result = { JavaType::##T, JavaValue{} };                           \
+				JavaObject result = { JavaType::T, JavaValue{} };                             \
 				switch (right.type) {                                                         \
 					case_cast(_boolean)                                                       \
 					case_cast(_byte)                                                          \
@@ -390,7 +452,7 @@ JavaObject Interpreter::evaluate_increment_or_decrement(Expr* expression) {
 	Expr_Increment* expr = dynamic_cast<Expr_Increment*>(expression);
 	JavaObject result = environment->get(expr->name);
 
-	#define case_op(op, T) case JavaType::##T: op result.value.##T; break;
+	#define case_op(op, T) case JavaType::T: op result.value.T; break;
 	#define type_error() throw JAVA_RUNTIME_ERROR(expr->name, "Expected a number operand.")
 
 	if (expr->is_positive) {
@@ -468,12 +530,27 @@ JavaObject Interpreter::evaluate(Expr* expression) {
 		case ExprType::assign: {
 			Expr_Assign* expr = dynamic_cast<Expr_Assign*>(expression);
 			JavaObject value = evaluate((Expr*)expr->rhs);
-			environment->assign(expr->lhs_name, value);
+			environment->assign(expr->lhs_name, expr->line, expr->column, value);
 			return value;
 		} break;
 
 		case ExprType::binary: {
 			return evaluate_binary(expression);
+		} break;
+
+		case ExprType::call: {
+			Expr_Call* expr = dynamic_cast<Expr_Call*>(expression);
+			JavaObject callee = evaluate((Expr*)expr->callee);
+
+			std::vector<ArgumentInfo> arguments = {};
+			for (int i = 0; i < expr->arguments->size(); i++) {
+				const auto& argument = expr->arguments->at(i);
+				JavaObject object = evaluate((Expr*)argument.expr);
+				arguments.emplace_back(object, argument.column, argument.line);
+			}
+
+			JavaCallable *function = (JavaCallable*)callee.value.function;
+			return function->call(this, arguments);
 		} break;
 
 		case ExprType::literal: {
@@ -510,7 +587,7 @@ JavaObject Interpreter::evaluate(Expr* expression) {
 
 		case ExprType::variable: {
 			Expr_Variable* expr = dynamic_cast<Expr_Variable*>(expression);
-			return environment->get(expr->name);
+			return environment->get(expr->name, expr->line, expr->column);
 		} break;
 	}
 

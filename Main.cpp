@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
 		run_dir(argv[1]);
 	}
 	else {
-		// REPL = true;
+		REPL = true;
 		run_repl();
 	}
 	

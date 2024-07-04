@@ -77,6 +77,7 @@ enum class TokenType : uint8_t {
 	_protected, // protected
 	_public,    // public
 
+	type_void,    // void
 	type_boolean, // boolean
 	type_byte,    // byte
 	type_char,    // char

@@ -12,6 +12,18 @@
 #define ERROR_MSG_END COLOR_END"\n"
 
 
+void JavaError::error(const std::string &name, uint32_t line, uint32_t column, const char* fmt, ...) {
+	printf(COLOR_CYN"Error at '%s' on [%u:%u]: ", name.c_str(), line, column);
+
+	va_list args;
+	__crt_va_start(args, fmt);
+	(void)_vfprintf_l(stdout, fmt, NULL, args);
+	__crt_va_end(args);
+
+	printf(ERROR_MSG_END);
+	had_error = true;
+}
+
 void JavaError::error(uint32_t line, uint32_t column, const char* fmt, ...) {
 	printf(COLOR_CYN"Error at [%u:%u]: ", line, column);
 
@@ -46,7 +58,7 @@ void JavaError::error(const Token &token, const char* fmt, va_list args) {
 }
 
 void JavaError::runtime_error(const JavaRuntimeError &error) {
-	printf(COLOR_CYN"Error at '%s' on [%u:%u]: %s", error.token.lexeme, error.token.line, error.token.column, error.message);
+	printf(COLOR_CYN"Error at '%s' on [%u:%u]: %s", error.name.c_str(), error.line, error.column, error.message);
 	printf(ERROR_MSG_END);
 	had_runtime_error = true;
 }

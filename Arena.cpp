@@ -2,6 +2,14 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#if defined(_DEBUG) && (defined(_WIN32) || defined(_WIN64))
+	#include <stdlib.h>
+	#include <crtdbg.h>
+	#define DBG_new new (_NORMAL_BLOCK, __FILE__, __LINE__)
+#else
+	#define DBG_new new
+#endif
+
 Arena arena_make() {
 	Arena arena = {};
 	arena_init(&arena, ARENA_DEFAULT_BUFFER_SIZE);

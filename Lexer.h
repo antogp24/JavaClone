@@ -44,6 +44,7 @@ private:
 		{ "soutln", TokenType::soutln },
 		{ "super", TokenType::super },
 		{ "this", TokenType::_this },
+		{ "void", TokenType::type_void },
 		{ "boolean", TokenType::type_boolean },
 		{ "byte", TokenType::type_byte },
 		{ "char", TokenType::type_char },
