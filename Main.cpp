@@ -9,7 +9,6 @@
 	#include <crtdbg.h>
 #endif
 
-#include "FolderReader.h"
 #include "AstPrinter.h"
 #include "Lexer.h"
 #include "Parser.h"
@@ -34,11 +33,11 @@ int main(int argc, char** argv) {
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 
 	if (argc - 1 > 1) {
-		printf("Usage: javaclone <directory>");
+		printf("Usage: javaclone <file>");
 		return 1;
 	}
 	else if (argc - 1 == 1) {
-		run_dir(argv[1]);
+		run_file(argv[1]);
 	}
 	else {
 		REPL = true;
@@ -48,26 +47,6 @@ int main(int argc, char** argv) {
 	_CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_DEBUG);
 	_CrtDumpMemoryLeaks();
 	return 0;
-}
-
-static void run_dir(char* name) {
-	FolderReader folder(name);
-
-	for (char *str : folder.get_listings()) {
-		if (str == NULL || str[0] == '.') {
-			continue;
-		}
-
-		std::string path(name);
-		path.append("/").append(str);
-
-		if (JavaError::had_error) {
-			break;
-		}
-
-		run_file((char *)path.c_str());
-		printf("\n");
-	}
 }
 
 static void run_file(char *name) {
@@ -85,10 +64,21 @@ static void run_file(char *name) {
 	memset(src, 0, len);
 	fread(src, sizeof(char), len, file);
 
+	Interpreter interpreter = {};
+
 	Lexer lexer(src, len);
 	const std::vector<Token> &tokens = lexer.scan();
 
-	if (!JavaError::had_error && REPL) lexer.print_tokens();
+	Parser parser(tokens);
+	std::vector<Stmt*>* statements = parser.parse_statements();
+
+	if (JavaError::had_error) {
+		parser.statements_free(statements);
+		exit(1);
+	}
+
+	interpreter.interpret(statements);
+	parser.statements_free(statements);
 
 	free(src);
 	fclose(file);

@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include "JavaObject.h"
+#include "JavaCallable.h"
 #include "Token.h"
+#include <cassert>
 
 #if defined(_DEBUG) && (defined(_WIN32) || defined(_WIN64))
 	#include <stdlib.h>
@@ -14,30 +16,13 @@ bool is_java_type_number(JavaType type) {
 		case JavaType::_int:
 		case JavaType::_long:
 		case JavaType::_float:
-		case JavaType::_double: {
-			return true;
-		}
-		default: {
-			return false;
-		}
+		case JavaType::_double: return true;
+		default: return false;
 	}
 }
 
 bool is_token_type_java_type(TokenType type) {
-	switch (type) {
-		case TokenType::type_void:
-		case TokenType::type_boolean:
-		case TokenType::type_byte:
-		case TokenType::type_char:
-		case TokenType::type_int:
-		case TokenType::type_long:
-		case TokenType::type_float:
-		case TokenType::type_double:
-		case TokenType::type_String:
-		case TokenType::type_ArrayList:
-			return true;
-	}
-	return false;
+	return token_type_to_java_type(type) != JavaType::none;
 }
 
 bool is_token_type_number(TokenType type) {
@@ -56,8 +41,8 @@ JavaType token_type_to_java_type(TokenType type) {
 		case TokenType::type_float: return JavaType::_float;
 		case TokenType::type_double: return JavaType::_double;
 		case TokenType::type_String: return JavaType::String;
+		default: return JavaType::none;
 	}
-	return JavaType::none;
 }
 
 const char* java_type_cstring(JavaType type) {
@@ -72,8 +57,8 @@ const char* java_type_cstring(JavaType type) {
 		case JavaType::_float: return "float";
 		case JavaType::_double: return "double";
 		case JavaType::String: return "String";
+		default: return "None";
 	}
-	return "None";
 }
 
 JavaType java_get_smaller_type(const JavaObject& lhs, const JavaObject& rhs) {
@@ -149,5 +134,12 @@ void java_object_print(const JavaObject& object) {
 			if (object.is_null) printf("null");
 			else if (object.value.String != nullptr) printf("%s", object.value.String);
 		} break;
+
+		case JavaType::Function: {
+			JavaCallable* callable = (JavaCallable*)object.value.function;
+			printf("%s", callable->to_string().c_str());
+		} break;
+
+		default: assert(true && "Unimplemented printing this java type.");
 	}
 }

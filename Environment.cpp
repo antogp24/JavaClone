@@ -19,6 +19,9 @@ void Environment::define(Stmt_Var* stmt, const Token& name, Expr* initializer, J
 }
 
 void Environment::define(Token name, JavaVariable variable) {
+	if (variable.value.type == JavaType::_void) {
+		throw JAVA_RUNTIME_ERROR_VA(name, "Can't define '%s' as void.", name.lexeme);
+	}
 	if (scope_has(name)) {
 		throw JAVA_RUNTIME_ERROR_VA(name, "Variable '%s' is already defined in this scope.", name.lexeme);
 	}
@@ -27,9 +30,9 @@ void Environment::define(Token name, JavaVariable variable) {
 
 void Environment::define_native_function(
 		const std::string& name,
-		std::function<int()> arity_fn,
-		std::function<JavaObject(void*, std::vector<ArgumentInfo>)> call_fn,
-		std::function<std::string()> to_string_fn)
+		Native_Arity arity_fn,
+		Native_Call call_fn,
+		Native_ToString to_string_fn)
 {
 	values[name] = JavaVariable{
 		JavaObject{
@@ -50,6 +53,9 @@ void Environment::assign(Token name, JavaObject value) {
 }
 
 void Environment::assign(const std::string& name, uint32_t line, uint32_t column, JavaObject value) {
+	if (value.type == JavaType::_void) {
+		throw JAVA_RUNTIME_ERR_VA(name, line, column, "Can't assign void to '%s'.", name.c_str());
+	}
 	if (values.contains(name)) {
 		JavaVariable variable = values.at(name);
 		variable.is_uninitialized = false;

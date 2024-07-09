@@ -54,17 +54,20 @@ struct JavaTypeInfo {
 };
 
 struct Stmt_Function : public Stmt {
+	const JavaType return_type;
 	const Token name;
 	const Visibility visibility;
 	const bool is_static;
 	const std::vector<std::pair<JavaTypeInfo, std::string>>* params;
 	const std::vector<Stmt*>* body;
 
-	Stmt_Function(const Token p_name,
+	Stmt_Function(const JavaType p_return_type,
+				  const Token p_name,
 				  const Visibility p_visibility,
 				  const bool p_is_static,
 				  const std::vector<std::pair<JavaTypeInfo, std::string>>* p_params,
 				  const std::vector<Stmt*>* p_body):
+		return_type(p_return_type),
 		name(p_name),
 		visibility(p_visibility),
 		is_static(p_is_static),
@@ -76,11 +79,12 @@ struct Stmt_Function : public Stmt {
 };
 
 struct Stmt_Print : public Stmt {
+	const Token token;
 	const Expr* expression;
 	const bool has_newline;
 
-	Stmt_Print(const Expr* p_expression, const bool p_has_newline):
-		expression(p_expression), has_newline(p_has_newline) {}
+	Stmt_Print(const Token p_token, const Expr* p_expression, const bool p_has_newline):
+		token(p_token), expression(p_expression), has_newline(p_has_newline) {}
 
 	inline StmtType get_type() override { return StmtType::Print; }
 };

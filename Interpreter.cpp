@@ -22,7 +22,7 @@ Interpreter::Interpreter() {
 	globals = DBG_new Environment();
 	globals->define_native_function("clock",
 		[]() { return 0; },
-		[](void* interpreter, std::vector<ArgumentInfo>) {
+		[](void* interpreter, uint32_t, uint32_t, std::vector<ArgumentInfo>) {
 			using namespace std::chrono;
 			Java_long result = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 			return JavaObject{ JavaType::_long, JavaValue{ ._long = result } };
@@ -162,6 +162,9 @@ void Interpreter::execute_statement(Stmt* statement) {
 		case StmtType::Print: { 
 			Stmt_Print* stmt = dynamic_cast<Stmt_Print*>(statement);
 			JavaObject value = evaluate((Expr*)stmt->expression);
+			if (value.type == JavaType::_void) {
+				throw JAVA_RUNTIME_ERROR(stmt->token, "Can't print void.");
+			}
 			if (REPL) AstPrinter::println("Print Ast: ", (Expr*)stmt->expression);
 			java_object_print(value);
 			if (stmt->has_newline) printf("\n");
@@ -169,7 +172,7 @@ void Interpreter::execute_statement(Stmt* statement) {
 
 		case StmtType::Return: {
 			Stmt_Return* stmt = dynamic_cast<Stmt_Return*>(statement);
-			JavaObject value = { JavaType::none, {} };
+			JavaObject value = { JavaType::_void, JavaValue{} };
 			if (stmt->value != nullptr) value = evaluate((Expr*)stmt->value);
 			throw Return{ value };
 		} break;
@@ -186,6 +189,10 @@ void Interpreter::execute_statement(Stmt* statement) {
 
 				if (initializer != nullptr) {
 					value = evaluate((Expr*)initializer);
+
+					if (value.type == JavaType::_void) {
+						throw JAVA_RUNTIME_ERROR(name, "Void isn't a valid value, as it is a zero-byte type.");
+					}
 
 					if ((is_token_type_number(stmt->type.type) || stmt->type.type == TokenType::type_boolean) && value.type == JavaType::_null) {
 						throw JAVA_RUNTIME_ERROR(stmt->type, "Primitives can't be null.");
@@ -550,7 +557,7 @@ JavaObject Interpreter::evaluate(Expr* expression) {
 			}
 
 			JavaCallable *function = (JavaCallable*)callee.value.function;
-			return function->call(this, arguments);
+			return function->call(this, expr->paren.line, expr->paren.column, arguments);
 		} break;
 
 		case ExprType::literal: {
@@ -594,9 +601,3 @@ JavaObject Interpreter::evaluate(Expr* expression) {
 	return JavaObject{ JavaType::none, JavaValue{} };
 }
 
-void Interpreter::check_number_operands(const JavaObject& lhs, const Token& _operator, const JavaObject& rhs) {
-	if (is_java_type_number(lhs.type) && is_java_type_number(rhs.type)) {
-		return;
-	}
-	throw JAVA_RUNTIME_ERROR(_operator, "Expected number operands.");
-}

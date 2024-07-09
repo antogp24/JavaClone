@@ -3,14 +3,18 @@
 #include "JavaCallable.h"
 #include <functional>
 
-struct JavaNativeFunction : public JavaCallable {
-	std::function<int()> arity_fn;
-	std::function<JavaObject(void*, std::vector<ArgumentInfo>)> call_fn;
-	std::function<std::string()> to_string_fn;
+typedef std::function<int()> Native_Arity;
+typedef std::function<JavaObject(void*, uint32_t, uint32_t, std::vector<ArgumentInfo>)> Native_Call;
+typedef std::function<std::string()> Native_ToString;
 
-	JavaNativeFunction(std::function<int()> p_arity_fn,
-					   std::function<JavaObject(void*, std::vector<ArgumentInfo>)> p_call_fn,
-					   std::function<std::string()> p_to_string_fn):
+struct JavaNativeFunction : public JavaCallable {
+	Native_Arity arity_fn;
+	Native_Call call_fn;
+	Native_ToString to_string_fn;
+
+	JavaNativeFunction(Native_Arity p_arity_fn,
+					   Native_Call p_call_fn,
+					   Native_ToString p_to_string_fn):
 		arity_fn(p_arity_fn),
 		call_fn(p_call_fn),
 		to_string_fn(p_to_string_fn)
@@ -24,8 +28,8 @@ struct JavaNativeFunction : public JavaCallable {
 		return arity_fn();
 	}
 
-	JavaObject call(Interpreter* interpreter, std::vector<ArgumentInfo> arguments) override {
-		return call_fn(interpreter, arguments);
+	JavaObject call(Interpreter* interpreter, uint32_t line, uint32_t column, std::vector<ArgumentInfo> arguments) override {
+		return call_fn(interpreter, line, column, arguments);
 	}
 
 	std::string to_string() override {

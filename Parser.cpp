@@ -79,8 +79,8 @@ Stmt* Parser::complex_var_declaration(TokenType first_modifier) {
 	auto hash = [this](TokenType type) { 
 		switch (type) {
 			case TokenType::_static:    return STATIC;
-			case TokenType::_public:  // falltrough
-			case TokenType::_private: // falltrough
+			case TokenType::_public:    // falltrough
+			case TokenType::_private:   // falltrough
 			case TokenType::_protected: return VISIBILITY;
 			case TokenType::_final:     return FINAL;
 		}
@@ -117,11 +117,16 @@ Stmt* Parser::complex_var_declaration(TokenType first_modifier) {
 	return var_declaration(type, visibility, counts[STATIC] == 1, counts[FINAL] == 1);
 }
 
-Stmt* Parser::fun_declaration(Token return_type, Token name, Visibility visibility, bool is_static) {
+Stmt* Parser::fun_declaration(Token return_type_token, Token name, Visibility visibility, bool is_static) {
 	if (this->func_level != 0) {
 		throw error(previous(), "Can't have nested functions.");
 	}
 	this->func_level++;
+
+	const JavaType return_type = token_type_to_java_type(return_type_token.type);
+	if (return_type == JavaType::none) {
+		throw error(tokens[current - 2], "Invalid java type.");
+	}
 
 	auto parameters = DBG_new std::vector<std::pair<JavaTypeInfo, std::string>>();
 	if (!check(TokenType::paren_right)) {
@@ -161,7 +166,7 @@ Stmt* Parser::fun_declaration(Token return_type, Token name, Visibility visibili
 	std::vector<Stmt*>* body = heap_block_statement();
 
 	this->func_level--;
-	return DBG_new Stmt_Function{ name, visibility, is_static, parameters, body };
+	return DBG_new Stmt_Function{ return_type, name, visibility, is_static, parameters, body };
 }
 
 Stmt* Parser::var_declaration(Token type, Visibility visibility, bool is_static, bool is_final) {
@@ -176,6 +181,12 @@ Stmt* Parser::var_declaration(Token type, Visibility visibility, bool is_static,
 			error(previous(), "Method can't be final.");
 		}
 		return fun_declaration(type, first_name, visibility, is_static);
+	}
+
+	// Now it's certain that it's a variable and not a function.
+
+	if (type.type == TokenType::type_void) {
+		throw error(type, "Type can't be void in variable definition.");
 	}
 	
 	Expr* first_initializer = nullptr;
@@ -388,12 +399,13 @@ Stmt* Parser::if_statement() {
 }
 
 Stmt* Parser::print_statement(const bool has_newline) {
+	const Token token = previous();
 	consume(TokenType::paren_left, "Expected '(' before expression in print statement.");
 	Expr* value = parse_expression();
 	expr_freelist.push_back(value);
 	consume(TokenType::paren_right, "Expected ')' after expression in print statement.");
 	consume(TokenType::semicolon, "Expected ';' after ')' in print statement.");
-	return DBG_new Stmt_Print(value, has_newline);
+	return DBG_new Stmt_Print(token, value, has_newline);
 }
 
 Stmt* Parser::return_statement() {

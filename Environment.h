@@ -38,7 +38,7 @@ struct Environment {
 	void define_native_function(
 		const std::string& name,
 		std::function<int()> arity_fn,
-		std::function<JavaObject(void*, std::vector<ArgumentInfo>)> call_fn,
+		std::function<JavaObject(void*, uint32_t, uint32_t, std::vector<ArgumentInfo>)> call_fn,
 		std::function<std::string()> to_string_fn);
 	void* get_function_ptr(const std::string& name);
 
