@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Token.h"
+#include "JavaObject.h"
 #include <vector>
 #include <string>
 
@@ -8,6 +9,7 @@ enum class ExprType {
 	assign,
 	binary,
 	call,
+	cast,
 	get,
 	grouping,
 	increment,
@@ -53,6 +55,17 @@ struct Expr_Binary : public Expr {
 	{}
 
 	inline ExprType get_type() override { return ExprType::binary; }
+};
+
+struct Expr_Cast : public Expr {
+	const JavaType type;
+	const uint32_t line, column;
+	const Expr *right;
+
+	Expr_Cast(const JavaType _type, const uint32_t _line, const uint32_t _column, const Expr* _right):
+		type(_type), line(_line), column(_column), right(_right) {}
+
+	inline ExprType get_type() override { return ExprType::cast; }
 };
 
 struct ParseCallInfo {

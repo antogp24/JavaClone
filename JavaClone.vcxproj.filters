@@ -60,6 +60,12 @@
     <ClCompile Include="JavaNativeFunction.h">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="JavaClass.h">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="JavaClass.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="FolderReader.h">
@@ -114,6 +120,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Call_Info.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="JavaInstance.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

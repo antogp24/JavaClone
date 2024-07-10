@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include "JavaObject.h"
 #include "JavaCallable.h"
+#include "JavaClass.h"
+#include "JavaInstance.h"
 #include "Token.h"
 #include <cassert>
 
@@ -88,6 +90,7 @@ Java##T java_cast_to##T(const JavaObject& object) {                          \
 	}                                                                        \
 	return 0;                                                                \
 }
+fn_java_cast(_boolean)
 fn_java_cast(_byte)
 fn_java_cast(_char)
 fn_java_cast(_int)
@@ -140,6 +143,16 @@ void java_object_print(const JavaObject& object) {
 			printf("%s", callable->to_string().c_str());
 		} break;
 
-		default: assert(true && "Unimplemented printing this java type.");
+		case JavaType::Class: {
+			JavaClass* class_info = (JavaClass*)object.value.class_info;
+			printf("%s", class_info->to_string().c_str());
+		} break;
+
+		case JavaType::Instance: {
+			JavaInstance* instance = (JavaInstance*)object.value.instance;
+			printf("%s@%p", instance->class_info->name.c_str(), instance);
+		} break;
+
+		default: assert(false && "Unimplemented printing this java type.");
 	}
 }

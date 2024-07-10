@@ -36,6 +36,12 @@ void expr_free(Expr* _expr) {
 			delete expr;
 		} break;
 
+		case ExprType::cast: {
+			Expr_Cast* expr = dynamic_cast<Expr_Cast*>(_expr);
+			expr_free((Expr*)expr->right);
+			delete expr;
+		} break;
+
 		case ExprType::get: {
 			Expr_Get* expr = dynamic_cast<Expr_Get*>(_expr);
 			expr_free((Expr*)expr->object);

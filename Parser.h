@@ -30,6 +30,7 @@ private:
 	std::vector<Stmt*> block_statement();
 	std::vector<Stmt*>* heap_block_statement();
 	Stmt* complex_var_declaration(TokenType first_modifier);
+	Stmt* class_declaration();
 	Stmt* var_declaration(Token type, Visibility visibility, bool is_static, bool is_final);
 	Stmt* fun_declaration(Token return_type, Token name, Visibility visibility, bool is_static);
 

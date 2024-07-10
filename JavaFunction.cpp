@@ -71,7 +71,6 @@ JavaObject JavaFunction::call(Interpreter* interpreter, uint32_t line, uint32_t 
 
 std::string JavaFunction::to_string() {
 	std::string result("<fn ");
-	result.append(declaration_name);
-	result.append(">");
+	result.append(declaration_name).append(">");
 	return result;
 }

@@ -60,10 +60,39 @@ void Parser::statements_free(std::vector<Stmt*>* statements) {
 }
 
 Stmt* Parser::declaration() {
+	if (match(TokenType::_class)) return class_declaration();
 	if (match_java_type()) return var_declaration(previous(), Visibility::Package, false, false);
 	if (match_any_modifier()) return complex_var_declaration(previous().type);
 
 	return statement();
+}
+
+
+Stmt* Parser::class_declaration() {
+	const Token name = consume(TokenType::identifier, "Expected class name.");
+	consume(TokenType::curly_left, "Expected '{' after class name.");
+	Stmt_Class* c = DBG_new Stmt_Class{name};
+
+	while (!check(TokenType::curly_right) && !is_at_end()) {
+		Stmt* stmt = declaration();
+
+		switch (stmt->get_type()) {
+			case StmtType::Var: {
+				Stmt_Var* attribute = dynamic_cast<Stmt_Var*>(stmt);
+				c->attributes.push_back(attribute);
+			} break;
+
+			case StmtType::Function: {
+				Stmt_Function* attribute = dynamic_cast<Stmt_Function*>(stmt);
+				c->methods.push_back(attribute);
+			} break;
+
+			default: throw error(previous(), "Expected only variable and method declarations inside class body.");
+		}
+	}
+
+	consume(TokenType::curly_right, "Expected '}' after class body.");
+	return c;
 }
 
 Stmt* Parser::complex_var_declaration(TokenType first_modifier) {
@@ -665,10 +694,14 @@ Expr *Parser::unary() {
 			case TokenType::type_long:
 			case TokenType::type_float:
 			case TokenType::type_double: {
-				Token type = advance();
+				Token type_token = advance();
 				consume(TokenType::paren_right, "Expected ')' after type in cast");
 				Expr* right = unary();
-				return DBG_new Expr_Unary{type, right};
+				JavaType type = token_type_to_java_type(type_token.type);
+				if (type == JavaType::_void || type == JavaType::_null || type == JavaType::none) {
+					throw error(type_token, "Invalid cast.");
+				}
+				return DBG_new Expr_Cast{type, type_token.line, type_token.column, right};
 			} break;
 
 			default: {

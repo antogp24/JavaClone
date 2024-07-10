@@ -7,6 +7,7 @@
 enum class StmtType {
 	Break,
 	Block,
+	Class,
 	Continue,
 	Expression,
 	Function,
@@ -119,6 +120,17 @@ struct Stmt_Var : public Stmt {
 
 	inline StmtType get_type() override { return StmtType::Var; }
 };
+
+struct Stmt_Class : public Stmt {
+	const Token name;
+	std::vector<Stmt_Var*> attributes = {};
+	std::vector<Stmt_Function*> methods = {};
+
+	Stmt_Class(const Token p_name): name(p_name) {}
+
+	inline StmtType get_type() override { return StmtType::Class; }
+};
+
 
 struct Else_If {
 	const Token token;

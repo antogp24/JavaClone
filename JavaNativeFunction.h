@@ -1,6 +1,7 @@
 #pragma once
 
 #include "JavaCallable.h"
+#include "Error.h"
 #include <functional>
 
 typedef std::function<int()> Native_Arity;
@@ -29,6 +30,9 @@ struct JavaNativeFunction : public JavaCallable {
 	}
 
 	JavaObject call(Interpreter* interpreter, uint32_t line, uint32_t column, std::vector<ArgumentInfo> arguments) override {
+		if (arity() != arguments.size()) {
+			throw JAVA_RUNTIME_ERR_VA(to_string(), line, column, "Expected %i arguments but got %i", arity(), arguments.size());
+		}
 		return call_fn(interpreter, line, column, arguments);
 	}
 

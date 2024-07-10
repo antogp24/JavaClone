@@ -15,6 +15,8 @@ enum class JavaType : uint8_t {
 	_null,
 	String,
 	Function,
+	Instance,
+	Class,
 	count,
 };
 
@@ -37,6 +39,8 @@ union JavaValue {
 	Java_double _double;
 	Java_String String;
 	void* function;
+	void* instance;
+	void* class_info;
 };
 
 struct JavaObject {
@@ -54,6 +58,7 @@ void java_object_print(const JavaObject& object);
 JavaType java_get_smaller_type(const JavaObject& lhs, const JavaObject& rhs);
 JavaType java_get_bigger_type(const JavaObject& lhs, const JavaObject &rhs);
 #define fn_java_cast(T) Java##T java_cast_to##T(const JavaObject& object);
+fn_java_cast(_boolean)
 fn_java_cast(_byte)
 fn_java_cast(_char)
 fn_java_cast(_int)

@@ -135,6 +135,8 @@
     <ClCompile Include="Expr.cpp" />
     <ClCompile Include="FolderReader.cpp" />
     <ClCompile Include="Interpreter.cpp" />
+    <ClCompile Include="JavaClass.cpp" />
+    <ClCompile Include="JavaClass.h" />
     <ClCompile Include="JavaFunction.cpp" />
     <ClCompile Include="JavaNativeFunction.h" />
     <ClCompile Include="JavaObject.cpp" />
@@ -156,6 +158,7 @@
     <ClInclude Include="Interpreter.h" />
     <ClInclude Include="JavaCallable.h" />
     <ClInclude Include="JavaFunction.h" />
+    <ClInclude Include="JavaInstance.h" />
     <ClInclude Include="JavaObject.h" />
     <ClInclude Include="Lexer.h" />
     <ClInclude Include="Expr.h" />

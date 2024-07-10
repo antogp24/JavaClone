@@ -2,10 +2,12 @@
 #include "JavaCallable.h"
 #include "JavaNativeFunction.h"
 #include "JavaFunction.h"
+#include "JavaClass.h"
 #include "AstPrinter.h"
 #include "Error.h"
 
 #include <chrono>
+#include <math.h>
 #include <assert.h>
 
 #if defined(_DEBUG) && (defined(_WIN32) || defined(_WIN64))
@@ -20,6 +22,16 @@ extern bool REPL;
 
 Interpreter::Interpreter() {
 	globals = DBG_new Environment();
+
+	auto cast_to_double = [](JavaObject object, const std::string &name, uint32_t line, uint32_t column) {
+		switch (object.type) {
+			case JavaType::_byte: case JavaType::_char: case JavaType::_int: case JavaType::_long:
+			case JavaType::_float:  return java_cast_to_double(object);
+			case JavaType::_double: return object.value._double; break;
+			default: throw JAVA_RUNTIME_ERR(name, line, column, "Expected a number as an argument.");
+		}
+	};
+
 	globals->define_native_function("clock",
 		[]() { return 0; },
 		[](void* interpreter, uint32_t, uint32_t, std::vector<ArgumentInfo>) {
@@ -28,6 +40,24 @@ Interpreter::Interpreter() {
 			return JavaObject{ JavaType::_long, JavaValue{ ._long = result } };
 		},
 		[]() { return "<native_fn clock>"; });
+
+	globals->define_native_function("sqrt",
+		[]() { return 1; },
+		[cast_to_double](void* interpreter, uint32_t line, uint32_t column, std::vector<ArgumentInfo> args) {
+			Java_double input = cast_to_double(args[0].object, "sqrt", line, column);
+			return JavaObject{ JavaType::_double, JavaValue{ ._double = sqrt(input) }};
+		},
+		[]() { return "<native_fn sqrt>"; });
+
+	globals->define_native_function("pow",
+		[]() { return 2; },
+		[cast_to_double](void* interpreter, uint32_t line, uint32_t column, std::vector<ArgumentInfo> args) {
+			Java_double number = cast_to_double(args[0].object, "pow", line, column);
+			Java_double power = cast_to_double(args[1].object, "pow", line, column);
+			return JavaObject{ JavaType::_double, JavaValue{ ._double = pow(number, power) }};
+		},
+		[]() { return "<native_fn pow>"; });
+
 	environment = globals;
 }
 
@@ -96,6 +126,18 @@ void Interpreter::execute_statement(Stmt* statement) {
 		case StmtType::Block: {
 			Stmt_Block* stmt = dynamic_cast<Stmt_Block*>(statement);
 			execute_block(stmt->statements, DBG_new Environment(environment));
+		} break;
+
+		case StmtType::Class: {
+			Stmt_Class* stmt = dynamic_cast<Stmt_Class*>(statement);
+			JavaClass *class_info = DBG_new JavaClass{ std::string(stmt->name.lexeme), stmt->name.line, stmt->name.column };
+			environment->define(stmt->name, JavaVariable{
+				.value = {JavaType::Class, {.class_info = class_info} },
+				.visibility = Visibility::Public,
+				.is_static = false,
+				.is_final = true,
+				.is_uninitialized = false,
+			});
 		} break;
 
 		case StmtType::Continue: {
@@ -370,9 +412,9 @@ JavaObject Interpreter::evaluate_unary(Expr* expression) {
 	#define op_error(message) throw JAVA_RUNTIME_ERROR(expr->_operator, message)
 
 	// This is intended for numbers and booleans.
-	#define case_unary(op, T)                                    \
-		case JavaType::T: {                                      \
-			result.value.T = result.value.T = op right.value.T;  \
+	#define case_unary(op, T)                   \
+		case JavaType::T: {                     \
+			result.value.T = op right.value.T;  \
 		} break;
 
 	// This is intended for numbers.
@@ -415,42 +457,11 @@ JavaObject Interpreter::evaluate_unary(Expr* expression) {
 			return result;
 		} break;
 
-		// Macros for casting operations.
-		#define case_cast(T) case_unary((Java##T), T)
-		#define case_cast_number(T)                                                           \
-			case TokenType::type##T: {                                                        \
-				JavaObject result = { JavaType::T, JavaValue{} };                             \
-				switch (right.type) {                                                         \
-					case_cast(_boolean)                                                       \
-					case_cast(_byte)                                                          \
-					case_cast(_char)                                                          \
-					case_cast(_int)                                                           \
-					case_cast(_long)                                                          \
-					case_cast(_float)                                                         \
-					case_cast(_double)                                                        \
-					default: {                                                                \
-						throw JAVA_RUNTIME_ERROR(expr->_operator, "Type must be a number.");  \
-					}                                                                         \
-				}                                                                             \
-				return result;                                                                \
-			}
-
-		// Calling the cast operation macros.
-		case_cast_number(_boolean)
-		case_cast_number(_byte)
-		case_cast_number(_char)
-		case_cast_number(_int)
-		case_cast_number(_long)
-		case_cast_number(_float)
-		case_cast_number(_double)
-
 		// Those crazy macros exist only for this code.
 		#undef op_error
 		#undef case_unary
 		#undef case_op_unary
 		#undef case_op_unary_whole
-		#undef case_cast
-		#undef case_cast_number
 	}
 	return JavaObject{ JavaType::none, JavaValue{} };
 }
@@ -558,6 +569,23 @@ JavaObject Interpreter::evaluate(Expr* expression) {
 
 			JavaCallable *function = (JavaCallable*)callee.value.function;
 			return function->call(this, expr->paren.line, expr->paren.column, arguments);
+		} break;
+
+		case ExprType::cast: {
+			Expr_Cast* expr = dynamic_cast<Expr_Cast*>(expression);
+			JavaObject result = { expr->type, {} };
+			JavaObject right = evaluate((Expr*)expr->right);
+
+			switch (expr->type) {
+				case JavaType::_byte: result.value._byte = java_cast_to_byte(right); break;
+				case JavaType::_char: result.value._char = java_cast_to_char(right); break;
+				case JavaType::_int: result.value._int = java_cast_to_int(right); break;
+				case JavaType::_long: result.value._long = java_cast_to_long(right); break;
+				case JavaType::_float: result.value._float = java_cast_to_float(right); break;
+				case JavaType::_double: result.value._double = java_cast_to_double(right); break;
+				default: throw JAVA_RUNTIME_ERR(java_type_cstring(expr->type), expr->line, expr->column, "Invalid type to cast.");
+			}
+			return result;
 		} break;
 
 		case ExprType::literal: {
