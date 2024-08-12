@@ -89,11 +89,14 @@ struct Expr_Call : public Expr {
 
 struct Expr_Get : public Expr {
 	const Expr* object;
-	const Token name;
+	const std::string name;
+	const uint32_t line, column;
 
 	Expr_Get(const Expr* _object, const Token _name):
 		object(_object),
-		name(_name)
+		name(_name.lexeme),
+		line(_name.line),
+		column(_name.column)
 	{}
 
 	inline ExprType get_type() override { return ExprType::get; }
@@ -146,13 +149,16 @@ struct Expr_Logical : public Expr {
 
 struct Expr_Set : public Expr {
 	const Expr_Get* lhs;
-	const Token lhs_after_dot_name;
-	const Expr* rhs;
+	const std::string rhs_name;
+	const uint32_t line, column;
+	const Expr* value;
 
-	Expr_Set(const Expr_Get* _lhs, const Token lhs_2, const Expr* _rhs) :
+	Expr_Set(const Expr_Get* _lhs, const std::string _name, const uint32_t _line, const uint32_t _column, const Expr* _value) :
 		lhs(_lhs),
-		lhs_after_dot_name(lhs_2),
-		rhs(_rhs)
+		rhs_name(_name),
+		line(_line),
+		column(_column),
+		value(_value)
 	{}
 
 	inline ExprType get_type() override { return ExprType::set; }

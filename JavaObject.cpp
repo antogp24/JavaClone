@@ -4,12 +4,39 @@
 #include "JavaClass.h"
 #include "JavaInstance.h"
 #include "Token.h"
+#include "Error.h"
 #include <cassert>
 
 #if defined(_DEBUG) && (defined(_WIN32) || defined(_WIN64))
 	#include <stdlib.h>
 	#include <crtdbg.h>
 #endif
+
+std::pair<JavaObject, bool> try_cast(const std::string& name, uint32_t line, uint32_t column, JavaType type, JavaObject value) {
+	JavaObject result = { type, JavaValue{} };
+
+	if (type == value.type) {
+		return { value, false };
+	}
+	else if (value.type != JavaType::_null) {
+		switch (type) {
+			case JavaType::_byte: result.value._byte = java_cast_to_byte(value); break;
+			case JavaType::_char: result.value._char = java_cast_to_char(value); break;
+			case JavaType::_int: result.value._int = java_cast_to_int(value); break;
+			case JavaType::_long: result.value._long = java_cast_to_long(value); break;
+			case JavaType::_float: result.value._float = java_cast_to_float(value); break;
+			case JavaType::_double: result.value._double = java_cast_to_double(value); break;
+			default: throw JAVA_RUNTIME_ERR_VA(name, line, column, "Can't implicitly cast '%s' to '%s'.", java_type_cstring(value.type), java_type_cstring(type));
+		}
+		return { result, false };
+	}
+	else {
+		if (type != JavaType::String) {
+			throw JAVA_RUNTIME_ERR(name, line, column, "Only objects can be null.");
+		}
+		return { result, true };
+	}
+}
 
 bool is_java_type_number(JavaType type) {
 	switch (type) {
@@ -21,6 +48,10 @@ bool is_java_type_number(JavaType type) {
 		case JavaType::_double: return true;
 		default: return false;
 	}
+}
+
+bool is_java_type_primitive(JavaType type) {
+	return is_java_type_number(type) || type == JavaType::_boolean;
 }
 
 bool is_token_type_java_type(TokenType type) {

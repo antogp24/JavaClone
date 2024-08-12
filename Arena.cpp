@@ -32,6 +32,24 @@ void arena_free(Arena *arena) {
 	arena->curr_offset = 0;
 }
 
+static inline bool is_power_of_two(uintptr_t x) {
+	return (x & (x - 1)) == 0;
+}
+
+static uintptr_t align_forward(uintptr_t ptr, size_t align) {
+	uintptr_t p, a, modulo;
+	assert(is_power_of_two(align));
+
+	p = ptr;
+	a = (uintptr_t)align;
+	modulo = p & (a - 1);
+
+	if (modulo != 0) {
+		p += a - modulo;
+	}
+	return p;
+}
+
 void* arena_alloc_align(Arena *arena, size_t size, size_t align) {
 	uintptr_t curr_ptr = (uintptr_t)arena->buffer + (uintptr_t)arena->curr_offset;
 	uintptr_t offset = align_forward(curr_ptr, align);
@@ -60,20 +78,3 @@ void* arena_alloc(Arena* arena, size_t size) {
 	return arena_alloc_align(arena, size, ARENA_DEFAULT_ALIGNMENT);
 }
 
-inline bool is_power_of_two(uintptr_t x) {
-	return (x & (x - 1)) == 0;
-}
-
-uintptr_t align_forward(uintptr_t ptr, size_t align) {
-	uintptr_t p, a, modulo;
-	assert(is_power_of_two(align));
-
-	p = ptr;
-	a = (uintptr_t)align;
-	modulo = p & (a - 1);
-
-	if (modulo != 0) {
-		p += a - modulo;
-	}
-	return p;
-}

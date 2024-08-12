@@ -62,7 +62,7 @@ struct AstPrinter {
 				Expr_Get* expr = dynamic_cast<Expr_Get*>(_expr);
 				printf("(get ");
 				print((Expr*)expr->object);
-				printf(".%s)", expr->name.lexeme);
+				printf(".%s)", expr->name.c_str());
 			} break;
 
 			case ExprType::grouping: {
@@ -85,7 +85,7 @@ struct AstPrinter {
 				printf("(set ");
 				print((Expr*)expr->lhs);
 				printf(" = ");
-				print((Expr*)expr->rhs);
+				print((Expr*)expr->value);
 				printf(")");
 			} break;
 

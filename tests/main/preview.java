@@ -1,6 +1,5 @@
 void function() {
     soutln("Function that does nothing.");
-    return;
 }
 
 void print_identity_matrix(int rows, int cols) {
@@ -29,12 +28,14 @@ long fib(long n) {
 }
 
 boolean is_prime(int n) {
+    boolean result = true;
     for (int d = 2; d <= (int)sqrt(n); d++) {
         if (n % d == 0) {
-            return false;
+            result = false;
+            break;
         }
     }
-    return true;
+    return result;
 }
 
 long gcd(long a, long b) {
@@ -51,7 +52,7 @@ long lcm(long a, long b) {
 }
 
 class Math {
-    final double PI = 3.14159;
+    static final double PI = 3.14159;
 
     static int gcd(int a, int b) {
         if (b > a) {
@@ -67,6 +68,7 @@ class Math {
     }
 }
 
+
 // Printing an identity matrix.
 print_identity_matrix(10, 10);
 
@@ -76,10 +78,11 @@ soutln(gcd(105, 30));
 sout("lcm(105, 30): ");
 soutln(lcm(105, 30));
 
+
 // Printing out the first n fibonacci numbers and timing it.
-long start = clock(), n = 13;
+long start = clock(), n = 50;
 for (int i = 1; i <= n; i++) {
-    sout(fibonacci(i));
+    sout(fib(i));
     if (i < n) sout(", ");
     else soutln("");
 }
@@ -91,7 +94,7 @@ sout(n);
 soutln(" fibonacci numbers.");
 
 // Checking if a number is prime.
-int number = 7;
+int number = 12;
 sout("Is ");
 sout(number);
 sout(" prime? ");
@@ -104,4 +107,5 @@ soutln(pow);
 
 // Testing classes and instances.
 soutln(Math);
-soutln(Math());
+soutln(Math.PI);
+soutln(Math.gcd(30, 105));

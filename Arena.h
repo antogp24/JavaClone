@@ -16,9 +16,6 @@ struct Arena {
 	size_t prev_offset;
 };
 
-inline bool is_power_of_two(uintptr_t x);
-uintptr_t align_forward(uintptr_t ptr, size_t align);
-
 Arena arena_make();
 void arena_init(Arena *arena, size_t size);
 void arena_free(Arena *arena);
@@ -26,4 +23,5 @@ void* arena_alloc_align(Arena* arena, size_t size, size_t align);
 void* arena_alloc(Arena* arena, size_t size);
 
 #define arena_push_type(arena, T) (T*)arena_alloc(arena, sizeof(T))
+#define arena_push_cstring(arena, len) (char*)arena_alloc(arena, len * sizeof(char))
 

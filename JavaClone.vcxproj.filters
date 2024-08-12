@@ -66,6 +66,9 @@
     <ClCompile Include="JavaClass.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="JavaInstance.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="FolderReader.h">

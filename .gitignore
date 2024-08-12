@@ -361,3 +361,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# cppcheck
+javaclone_analysis-cppcheck-build-dir/
+javaclone_analysis.cppcheck

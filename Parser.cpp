@@ -70,8 +70,13 @@ Stmt* Parser::declaration() {
 
 Stmt* Parser::class_declaration() {
 	const Token name = consume(TokenType::identifier, "Expected class name.");
+	if (class_level != 0) {
+		throw error(name, "Can't have nested classes.");
+	}
 	consume(TokenType::curly_left, "Expected '{' after class name.");
 	Stmt_Class* c = DBG_new Stmt_Class{name};
+
+	this->class_level++;
 
 	while (!check(TokenType::curly_right) && !is_at_end()) {
 		Stmt* stmt = declaration();
@@ -83,8 +88,8 @@ Stmt* Parser::class_declaration() {
 			} break;
 
 			case StmtType::Function: {
-				Stmt_Function* attribute = dynamic_cast<Stmt_Function*>(stmt);
-				c->methods.push_back(attribute);
+				Stmt_Function* method = dynamic_cast<Stmt_Function*>(stmt);
+				c->methods.push_back(method);
 			} break;
 
 			default: throw error(previous(), "Expected only variable and method declarations inside class body.");
@@ -92,6 +97,7 @@ Stmt* Parser::class_declaration() {
 	}
 
 	consume(TokenType::curly_right, "Expected '}' after class body.");
+	this->class_level--;
 	return c;
 }
 
@@ -195,7 +201,7 @@ Stmt* Parser::fun_declaration(Token return_type_token, Token name, Visibility vi
 	std::vector<Stmt*>* body = heap_block_statement();
 
 	this->func_level--;
-	return DBG_new Stmt_Function{ return_type, name, visibility, is_static, parameters, body };
+	return DBG_new Stmt_Function{ return_type, name, visibility, is_static, this->class_level == 1, parameters, body };
 }
 
 Stmt* Parser::var_declaration(Token type, Visibility visibility, bool is_static, bool is_final) {
@@ -533,7 +539,7 @@ Expr* Parser::assignment() {
 			}
 			case ExprType::get: {
 				Expr_Get* get = dynamic_cast<Expr_Get*>(expr);
-				return DBG_new Expr_Set{get, get->name, rhs};
+				return DBG_new Expr_Set{get, get->name, get->line, get->column, rhs};
 			}
 		}
 

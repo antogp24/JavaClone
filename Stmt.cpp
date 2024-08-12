@@ -27,11 +27,11 @@ void stmt_free(Stmt* statement) {
 
 		case StmtType::Class: {
 			Stmt_Class* stmt = dynamic_cast<Stmt_Class*>(statement);
-			for (int i = 0; i < stmt->attributes.size(); i++) {
-				stmt_free(stmt->attributes.at(i));
+			for (Stmt_Var* attribute : stmt->attributes) {
+				stmt_free(attribute);
 			}
-			for (int i = 0; i < stmt->methods.size(); i++) {
-				stmt_free(stmt->methods.at(i));
+			for (Stmt_Function* method : stmt->methods) {
+				stmt_free(method);
 			}
 			delete stmt;
 		} break;
@@ -64,7 +64,9 @@ void stmt_free(Stmt* statement) {
 			Stmt_Function* stmt = dynamic_cast<Stmt_Function*>(statement);
 			// Body and params are deleted at the Interpreter's destructor.
 			// This must also be taken into consideration for class methods.
-			delete stmt;
+			if (!stmt->is_method) {
+				delete stmt;
+			}
 		} break;
 
 		case StmtType::Print: {

@@ -2,6 +2,7 @@
 
 #include "Expr.h"
 #include "Stmt.h"
+#include "Arena.h"
 #include "JavaObject.h"
 #include "Environment.h"
 
@@ -11,6 +12,7 @@ public:
 	~Interpreter();
 	void interpret(std::vector<Stmt*>* statements);
 	void execute_block(const std::vector<Stmt*> &statements, Environment *environment);
+	JavaObject validate_variable(const Stmt_Var* stmt, const JavaType type, const Token& name, const Expr* initializer);
 	struct Return { JavaObject value; };
 private:
 	void execute_statement(Stmt* statement);
@@ -25,4 +27,6 @@ private:
 public:
 	Environment* globals;
 	Environment* environment;
+	std::vector<void*> instances;
+	Arena strings_arena;
 };

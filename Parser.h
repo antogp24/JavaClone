@@ -78,6 +78,7 @@ private:
 	uint32_t current = 0;
 	uint32_t loop_level = 0;
 	uint32_t func_level = 0;
+	uint32_t class_level = 0;
 	std::vector<Expr*> expr_freelist;
 	std::vector<Stmt*> stmt_freelist;
 };

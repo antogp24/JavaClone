@@ -3,6 +3,7 @@
 #include "JavaNativeFunction.h"
 #include "JavaFunction.h"
 #include "JavaClass.h"
+#include "JavaInstance.h"
 #include "AstPrinter.h"
 #include "Error.h"
 
@@ -22,6 +23,9 @@ extern bool REPL;
 
 Interpreter::Interpreter() {
 	globals = DBG_new Environment();
+
+	strings_arena = arena_make();
+	instances = {};
 
 	auto cast_to_double = [](JavaObject object, const std::string &name, uint32_t line, uint32_t column) {
 		switch (object.type) {
@@ -62,9 +66,11 @@ Interpreter::Interpreter() {
 }
 
 Interpreter::~Interpreter() {
-	for (auto const& [key, value] : globals->values) {
-		if (value.value.type == JavaType::Function) {
-			JavaCallable* function = (JavaCallable*)globals->get_function_ptr(key);
+	arena_free(&strings_arena);
+
+	for (auto const& [_, variable] : globals->values) {
+		if (variable.object.type == JavaType::Function) {
+			JavaCallable* function = (JavaCallable*)variable.object.value.function;
 
 			switch (function->get_type()) {
 				case CallableType::UserDefined: {
@@ -86,8 +92,41 @@ Interpreter::~Interpreter() {
 				} break;
 			}
 		}
+		else if (variable.object.type == JavaType::Class) {
+			JavaClass* classinfo = (JavaClass*)variable.object.value.class_info;
+			for (auto const& [_, variable] : classinfo->static_fields) {
+				if (variable.object.type == JavaType::Function) {
+					JavaCallable* callable = (JavaCallable*)variable.object.value.function;
+					assert(callable->get_type() == CallableType::UserDefined);
+					JavaFunction* userfn = dynamic_cast<JavaFunction*>(callable);
+					delete userfn;
+				}
+			}
+			for (Stmt_Function* method : classinfo->methods) {
+				delete method->params;
+				for (int i = 0; i < method->body->size(); i++) {
+					stmt_free(method->body->at(i));
+				}
+				delete method->body;
+				delete method;
+			}
+			delete classinfo;
+		}
 	}
 
+	for (void* it : instances) {
+		JavaInstance* instance = (JavaInstance*)it;
+		for (auto const& [_, variable] : instance->fields) {
+			if (variable.object.type == JavaType::Function) {
+				JavaCallable* callable = (JavaCallable*)variable.object.value.function;
+				assert(callable->get_type() == CallableType::UserDefined);
+				JavaFunction* userfn = dynamic_cast<JavaFunction*>(callable);
+				delete userfn;
+			}
+		}
+		delete instance;
+	}
+	
 	delete globals;
 }
 
@@ -102,22 +141,49 @@ void Interpreter::interpret(std::vector<Stmt*>* statements) {
 	}
 }
 
-void Interpreter::execute_block(const std::vector<Stmt*>& statements, Environment* environment) {
+void Interpreter::execute_block(const std::vector<Stmt*>& statements, Environment* env) {
 	Environment* previous = this->environment;
-	this->environment = environment;
+	this->environment = env;
 
-	for (int i = 0; i < statements.size(); i++) {
+	for (Stmt* statement : statements) {
 		if (this->broke || this->continued) break;
-		execute_statement(statements.at(i));
+		execute_statement(statement);
 	}
 
-	delete environment;
+	delete env;
 	this->environment = previous;
 }
 
-void Interpreter::execute_statement(Stmt* statement) {
-	// if (statement == nullptr) return;
+JavaObject Interpreter::validate_variable(const Stmt_Var* stmt, const JavaType type, const Token& name, const Expr* initializer) {
+	JavaObject value = { JavaType::none, JavaValue{} };
 
+	if (type == JavaType::none) {
+		throw JAVA_RUNTIME_ERROR_VA(stmt->type, "Token '%s' is an invalid type.", stmt->type.lexeme);
+	}
+
+	if (initializer != nullptr) {
+		value = evaluate((Expr*)initializer);
+
+		if (value.type == JavaType::_void) {
+			throw JAVA_RUNTIME_ERROR(name, "Void isn't a valid value, as it is a zero-byte type.");
+		}
+
+		if (is_java_type_primitive(type) && value.type == JavaType::_null) {
+			throw JAVA_RUNTIME_ERROR(stmt->type, "Primitives can't be null.");
+		}
+
+		if (is_java_type_number(type) && !is_java_type_number(value.type) ||
+		   !is_java_type_number(type) &&  is_java_type_number(value.type))
+		{
+			throw JAVA_RUNTIME_ERROR_VA(stmt->type, "Can't do an implicit cast between '%s' and '%s'.", java_type_cstring(value.type), stmt->type.lexeme);
+		}
+
+		value.is_null = (value.type == JavaType::_null);
+	}
+	return value;
+}
+
+void Interpreter::execute_statement(Stmt* statement) {
 	switch (statement->get_type()) {
 		case StmtType::Break: {
 			this->broke = true;
@@ -125,14 +191,22 @@ void Interpreter::execute_statement(Stmt* statement) {
 
 		case StmtType::Block: {
 			Stmt_Block* stmt = dynamic_cast<Stmt_Block*>(statement);
-			execute_block(stmt->statements, DBG_new Environment(environment));
+			auto block_environment = DBG_new Environment(environment);
+			execute_block(stmt->statements, block_environment);
 		} break;
 
 		case StmtType::Class: {
 			Stmt_Class* stmt = dynamic_cast<Stmt_Class*>(statement);
-			JavaClass *class_info = DBG_new JavaClass{ std::string(stmt->name.lexeme), stmt->name.line, stmt->name.column };
-			environment->define(stmt->name, JavaVariable{
-				.value = {JavaType::Class, {.class_info = class_info} },
+			JavaClass *class_info = DBG_new JavaClass{ 
+				this,
+				std::string(stmt->name.lexeme),
+				stmt->name.line,
+				stmt->name.column,
+				stmt->attributes,
+				stmt->methods,
+			};
+			environment->define(stmt->name, JavaType::Class, JavaVariable{
+				.object = {JavaType::Class, {.class_info = class_info} },
 				.visibility = Visibility::Public,
 				.is_static = false,
 				.is_final = true,
@@ -159,16 +233,16 @@ void Interpreter::execute_statement(Stmt* statement) {
 			Stmt_Function* stmt = dynamic_cast<Stmt_Function*>(statement);
 			void* fn = DBG_new JavaFunction(stmt);
 			JavaVariable function = {
-				JavaObject{
+				.object = {
 					JavaType::Function,
 					JavaValue{ .function = fn }
 				},
-				stmt->visibility,
-				stmt->is_static,
-				true,
-				false,
+				.visibility = stmt->visibility,
+				.is_static = stmt->is_static,
+				.is_final = true,
+				.is_uninitialized = false,
 			};
-			globals->define(stmt->name, function);
+			globals->define(stmt->name, JavaType::Function, function);
 		} break;
 
 		case StmtType::If: { 
@@ -215,41 +289,23 @@ void Interpreter::execute_statement(Stmt* statement) {
 		case StmtType::Return: {
 			Stmt_Return* stmt = dynamic_cast<Stmt_Return*>(statement);
 			JavaObject value = { JavaType::_void, JavaValue{} };
-			if (stmt->value != nullptr) value = evaluate((Expr*)stmt->value);
+			if (stmt->value != nullptr) {
+				value = evaluate((Expr*)stmt->value);
+			}
 			throw Return{ value };
 		} break;
 
 		case StmtType::Var: {
 			Stmt_Var* stmt = dynamic_cast<Stmt_Var*>(statement);
-			JavaObject value = { JavaType::none, JavaValue{} };
 
 			assert(stmt->names.size() == stmt->initializers.size());
 
 			for (int i = 0; i < stmt->names.size(); i++) {
 				Expr* initializer = stmt->initializers.at(i);
 				const Token& name = stmt->names.at(i);
-
-				if (initializer != nullptr) {
-					value = evaluate((Expr*)initializer);
-
-					if (value.type == JavaType::_void) {
-						throw JAVA_RUNTIME_ERROR(name, "Void isn't a valid value, as it is a zero-byte type.");
-					}
-
-					if ((is_token_type_number(stmt->type.type) || stmt->type.type == TokenType::type_boolean) && value.type == JavaType::_null) {
-						throw JAVA_RUNTIME_ERROR(stmt->type, "Primitives can't be null.");
-					}
-
-					if (is_token_type_number(stmt->type.type) && !is_java_type_number(value.type) ||
-					   !is_token_type_number(stmt->type.type) && is_java_type_number(value.type))
-					{
-						throw JAVA_RUNTIME_ERROR_VA(stmt->type, "Can't do an implicit cast between '%s' and '%s'.", java_type_cstring(value.type), stmt->type.lexeme);
-					}
-
-					value.is_null = (value.type == JavaType::_null);
-				}
-				value.type = token_type_to_java_type(stmt->type.type);
-				environment->define(stmt, name, initializer, value);
+				JavaType type = token_type_to_java_type(stmt->type.type);
+				JavaObject value = validate_variable(stmt, type, name, initializer);
+				environment->define(stmt, name, initializer, type, value);
 
 				if (REPL) {
 					printf("Defined %s ", stmt->is_static ? "static" : "non static");
@@ -607,6 +663,24 @@ JavaObject Interpreter::evaluate(Expr* expression) {
 			return evaluate_logical(expression);
 		} break;
 
+		case ExprType::get: {
+			Expr_Get* expr = dynamic_cast<Expr_Get*>(expression);
+			JavaObject object = evaluate((Expr*)expr->object);
+			switch (object.type) {
+				case JavaType::Instance: {
+					JavaInstance* instance = (JavaInstance*)object.value.instance;
+					return instance->get(expr);
+				} break;
+
+				case JavaType::Class: {
+					JavaClass* classinfo = (JavaClass*)object.value.class_info;
+					return classinfo->get(expr);
+				} break;
+
+				default: throw JAVA_RUNTIME_ERR(expr->name, expr->line, expr->column, "Only instances and classes have properties.");
+			}
+		} break;
+
 		case ExprType::grouping: {
 			Expr_Grouping* expr = dynamic_cast<Expr_Grouping*>(expression);
 			return evaluate((Expr*)expr->expression);
@@ -614,6 +688,18 @@ JavaObject Interpreter::evaluate(Expr* expression) {
 
 		case ExprType::increment: {
 			return evaluate_increment_or_decrement(expression);
+		} break;
+
+		case ExprType::set: {
+			Expr_Set* expr = dynamic_cast<Expr_Set*>(expression);
+			JavaObject lhs = evaluate((Expr*)expr->lhs);
+			if (lhs.type != JavaType::Instance) {
+				throw JAVA_RUNTIME_ERR(expr->rhs_name, expr->line, expr->column, "Only instances have fields.");
+			}
+			JavaObject value = evaluate((Expr*)expr->value);
+			JavaInstance* instance = (JavaInstance*)lhs.value.instance;
+			instance->set(expr, value);
+			return value;
 		} break;
 
 		case ExprType::unary: {

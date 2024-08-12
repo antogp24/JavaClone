@@ -59,6 +59,7 @@ struct Stmt_Function : public Stmt {
 	const Token name;
 	const Visibility visibility;
 	const bool is_static;
+	const bool is_method;
 	const std::vector<std::pair<JavaTypeInfo, std::string>>* params;
 	const std::vector<Stmt*>* body;
 
@@ -66,12 +67,14 @@ struct Stmt_Function : public Stmt {
 				  const Token p_name,
 				  const Visibility p_visibility,
 				  const bool p_is_static,
+				  const bool p_is_method,
 				  const std::vector<std::pair<JavaTypeInfo, std::string>>* p_params,
 				  const std::vector<Stmt*>* p_body):
 		return_type(p_return_type),
 		name(p_name),
 		visibility(p_visibility),
 		is_static(p_is_static),
+		is_method(p_is_method),
 		params(p_params),
 		body(p_body)
 	{}

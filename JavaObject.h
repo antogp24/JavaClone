@@ -1,6 +1,8 @@
 #pragma once
 
 #include "TokenType.h"
+#include <utility>
+#include <string>
 
 enum class JavaType : uint8_t {
 	none = 0,
@@ -49,9 +51,11 @@ struct JavaObject {
 	int32_t is_null = false;
 };
 
+std::pair<JavaObject, bool> try_cast(const std::string& name, uint32_t line, uint32_t column, JavaType type, JavaObject value);
 JavaType token_type_to_java_type(TokenType type);
 const char* java_type_cstring(JavaType type);
 bool is_java_type_number(JavaType type);
+bool is_java_type_primitive(JavaType type);
 bool is_token_type_number(TokenType type);
 bool is_token_type_java_type(TokenType type);
 void java_object_print(const JavaObject& object);

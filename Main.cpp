@@ -22,7 +22,6 @@ namespace JavaError {
 
 bool REPL = false;
 
-static void run_dir(char* name);
 static void run_file(char *name);
 static void run_repl();
 

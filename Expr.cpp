@@ -74,7 +74,7 @@ void expr_free(Expr* _expr) {
 		case ExprType::set: {
 			Expr_Set* expr = dynamic_cast<Expr_Set*>(_expr);
 			expr_free((Expr*)expr->lhs);
-			expr_free((Expr*)expr->rhs);
+			expr_free((Expr*)expr->value);
 			delete expr;
 		} break;
 

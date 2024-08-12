@@ -138,6 +138,7 @@
     <ClCompile Include="JavaClass.cpp" />
     <ClCompile Include="JavaClass.h" />
     <ClCompile Include="JavaFunction.cpp" />
+    <ClCompile Include="JavaInstance.cpp" />
     <ClCompile Include="JavaNativeFunction.h" />
     <ClCompile Include="JavaObject.cpp" />
     <ClCompile Include="Lexer.cpp" />
