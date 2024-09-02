@@ -26,17 +26,21 @@ void Environment::define(Stmt_Var* stmt, const Token& name, Expr* initializer, J
 	define(name, expected_type, variable);
 }
 
-void Environment::define(Token name, JavaType expected_type, JavaVariable variable) {
+void Environment::define(std::string name, uint32_t line, uint32_t column, JavaType expected_type, JavaVariable variable) {
 	if (variable.object.type == JavaType::_void) {
-		throw JAVA_RUNTIME_ERROR_VA(name, "Can't define '%s' as void.", name.lexeme);
+		throw JAVA_RUNTIME_ERR_VA(name, line, column, "Can't define '%s' as void.", name.c_str());
 	}
-	if (scope_has(name)) {
-		throw JAVA_RUNTIME_ERROR_VA(name, "Variable '%s' is already defined in this scope.", name.lexeme);
+	if (values.contains(name)) {
+		throw JAVA_RUNTIME_ERR_VA(name, line, column, "Variable '%s' is already defined in this scope.", name.c_str());
 	}
 	JavaVariable defaultvar = variable;
 	defaultvar.object.type = expected_type;
-	scope_set(name, defaultvar);
-	assign(name, variable.object, true);
+	values[name] = defaultvar;
+	assign(name, line, column, variable.object, true);
+}
+
+void Environment::define(Token name, JavaType expected_type, JavaVariable variable) {
+	define(name.lexeme, name.line, name.column, expected_type, variable);
 }
 
 void Environment::define_native_function(

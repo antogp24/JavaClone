@@ -15,7 +15,7 @@
 #endif
 
 
-Parser::Parser(const std::vector<Token>& _tokens):
+Parser::Parser(std::vector<Token>& _tokens):
 	tokens(_tokens)
 {
 }
@@ -60,21 +60,34 @@ void Parser::statements_free(std::vector<Stmt*>* statements) {
 }
 
 Stmt* Parser::declaration() {
-	if (match(TokenType::_class)) return class_declaration();
-	if (match_java_type()) return var_declaration(previous(), Visibility::Package, false, false);
+	if (match(TokenType::_abstract)) return class_declaration(true);
+	if (match(TokenType::_class)) return class_declaration(false);
+	if (match_constructor()) return fun_declaration(TokenType::type_void, make__init__token(peek()), Visibility::Public, false);
+	if (check_java_type() && peek_next().type != TokenType::paren_left && peek_next().type != TokenType::dot) {
+		advance();
+		return var_declaration(previous(), Visibility::Package, false, false);
+	}
 	if (match_any_modifier()) return complex_var_declaration(previous().type);
 
 	return statement();
 }
 
 
-Stmt* Parser::class_declaration() {
+Stmt* Parser::class_declaration(bool is_abstract) {
+	if (is_abstract) {
+		consume(TokenType::_class, "Expected 'class' after keyword 'abstract'.");
+	}
 	const Token name = consume(TokenType::identifier, "Expected class name.");
 	if (class_level != 0) {
 		throw error(name, "Can't have nested classes.");
 	}
+	if (class_names.contains(name.lexeme)) {
+		throw error(name, "Class is already defined.");
+	}
+	class_names.insert(name.lexeme);
+
 	consume(TokenType::curly_left, "Expected '{' after class name.");
-	Stmt_Class* c = DBG_new Stmt_Class{name};
+	Stmt_Class* c = DBG_new Stmt_Class{name, is_abstract};
 
 	this->class_level++;
 
@@ -152,13 +165,13 @@ Stmt* Parser::complex_var_declaration(TokenType first_modifier) {
 	return var_declaration(type, visibility, counts[STATIC] == 1, counts[FINAL] == 1);
 }
 
-Stmt* Parser::fun_declaration(Token return_type_token, Token name, Visibility visibility, bool is_static) {
+Stmt* Parser::fun_declaration(TokenType return_type_token_type, Token name, Visibility visibility, bool is_static) {
 	if (this->func_level != 0) {
 		throw error(previous(), "Can't have nested functions.");
 	}
 	this->func_level++;
 
-	const JavaType return_type = token_type_to_java_type(return_type_token.type);
+	const JavaType return_type = token_type_to_java_type(return_type_token_type);
 	if (return_type == JavaType::none) {
 		throw error(tokens[current - 2], "Invalid java type.");
 	}
@@ -208,14 +221,14 @@ Stmt* Parser::var_declaration(Token type, Visibility visibility, bool is_static,
 	std::vector<Token> names = {};
 	std::vector<Expr*> initializers = {};
 
-	Token first_name = consume(TokenType::identifier, "Expected variable name.");
+	Token first_name = consume(TokenType::identifier, "Expected variable name in variable declaration.");
 	names.push_back(first_name);
 
 	if (match(TokenType::paren_left)) {
 		if (is_final) {
 			error(previous(), "Method can't be final.");
 		}
-		return fun_declaration(type, first_name, visibility, is_static);
+		return fun_declaration(type.type, first_name, visibility, is_static);
 	}
 
 	// Now it's certain that it's a variable and not a function.
@@ -236,7 +249,7 @@ Stmt* Parser::var_declaration(Token type, Visibility visibility, bool is_static,
 	initializers.push_back(first_initializer);
 
 	while (match(TokenType::comma)) {
-		Token name = consume_no_reset(TokenType::identifier, "Expected variable name.");
+		Token name = consume_no_reset(TokenType::identifier, "Expected variable name in variable declaration.");
 		names.push_back(name);
 
 		Expr* initializer = nullptr;
@@ -704,7 +717,7 @@ Expr *Parser::unary() {
 				consume(TokenType::paren_right, "Expected ')' after type in cast");
 				Expr* right = unary();
 				JavaType type = token_type_to_java_type(type_token.type);
-				if (type == JavaType::_void || type == JavaType::_null || type == JavaType::none) {
+				if (type == JavaType::_void || type == JavaType::_null || type == JavaType::none || type == JavaType::UserDefined) {
 					throw error(type_token, "Invalid cast.");
 				}
 				return DBG_new Expr_Cast{type, type_token.line, type_token.column, right};
@@ -774,7 +787,14 @@ Expr *Parser::primary() {
 		return DBG_new Expr_Literal{ previous().literal };
 	}
 
-	if (match(TokenType::identifier)) {
+	if (match(TokenType::_this)) {
+		if (this->class_level == 0) {
+			throw error(previous(), "Can't use 'this' outside a class.");
+		}
+		return DBG_new Expr_This{ previous().lexeme, previous().line, previous().column };
+	}
+
+	if (match(2, TokenType::identifier, TokenType::type_user_defined)) {
 		bool is_function = (peek().type == TokenType::paren_left);
 		Token name = previous();
 		return DBG_new Expr_Variable{name.lexeme, name.line, name.column, is_function};
@@ -845,7 +865,11 @@ void Parser::synchronize() {
 }
 
 Token Parser::consume_java_type(const char* fmt, ...) {
-	if (is_token_type_java_type(peek().type)) {
+	bool is_type_user_defined = class_names.contains(peek().lexeme);
+	if (is_token_type_java_type(peek().type) || is_type_user_defined) {
+		if (is_type_user_defined) {
+			this->tokens.at(this->current).type = TokenType::type_user_defined;
+		}
 		expr_freelist.clear();
 		stmt_freelist.clear();
 		return advance();
@@ -892,6 +916,21 @@ bool Parser::match_any_modifier() {
 	return any;
 }
 
+bool Parser::match_constructor() {
+	if (peek().type == TokenType::constructor) {
+		for (int i = 0; i < 2; i++) advance();
+		return true;
+	}
+	else if (is_token_type_modifier(peek().type) && peek_next().type == TokenType::constructor) {
+		if (peek().type != TokenType::_public) {
+			throw error(peek(), "Constructor must have a visibility of public or package.");
+		}
+		for (int i = 0; i < 3; i++) advance();
+		return true;
+	}
+	return false;
+}
+
 bool Parser::match_java_type() {
 	bool is_type = check_java_type();
 	if (is_type) advance();
@@ -922,9 +961,13 @@ bool Parser::match(size_t n, ...) {
 	return false;
 }
 
-
 bool Parser::check_java_type() {
 	if (is_at_end()) return false;
+
+	if (class_names.contains(peek().lexeme)) {
+		this->tokens.at(this->current).type = TokenType::type_user_defined;
+		return true;
+	}
 	return is_token_type_java_type(peek().type);
 }
 

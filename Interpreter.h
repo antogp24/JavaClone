@@ -6,12 +6,16 @@
 #include "JavaObject.h"
 #include "Environment.h"
 
+#include <set>
+#include <random>
+
 class Interpreter {
 public:
 	Interpreter();
 	~Interpreter();
 	void interpret(std::vector<Stmt*>* statements);
 	void execute_block(const std::vector<Stmt*> &statements, Environment *environment);
+	void add_class_names(const std::set<std::string>& class_names);
 	JavaObject validate_variable(const Stmt_Var* stmt, const JavaType type, const Token& name, const Expr* initializer);
 	struct Return { JavaObject value; };
 private:
@@ -24,9 +28,11 @@ private:
 private:
 	bool broke = false;
 	bool continued = false;
+	std::mt19937 gen;
 public:
 	Environment* globals;
 	Environment* environment;
 	std::vector<void*> instances;
+	std::set<std::string> class_names;
 	Arena strings_arena;
 };

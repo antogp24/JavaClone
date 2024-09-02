@@ -27,6 +27,7 @@ struct Environment {
 	JavaVariable scope_get(const Token &name);
 	void scope_set(const Token &name, JavaVariable value);
 
+	void define(std::string name, uint32_t line, uint32_t column, JavaType expected_type, JavaVariable variable);
 	void define(Stmt_Var* stmt, const Token& name, Expr* initializer, JavaType expected_type, JavaObject value);
 	void define(Token name, JavaType expected_type, JavaVariable variable);
 	void assign(Token name, JavaObject value);

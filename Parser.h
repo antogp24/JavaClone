@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <set>
 
 #include "Arena.h"
 #include "Token.h"
@@ -10,7 +11,7 @@
 
 class Parser {
 public:
-	Parser(const std::vector<Token>& _tokens);
+	Parser(std::vector<Token>& _tokens);
 	~Parser();
 	Expr* parse_expression();
 	std::vector<Stmt*>* parse_statements();
@@ -30,9 +31,9 @@ private:
 	std::vector<Stmt*> block_statement();
 	std::vector<Stmt*>* heap_block_statement();
 	Stmt* complex_var_declaration(TokenType first_modifier);
-	Stmt* class_declaration();
+	Stmt* class_declaration(bool is_abstract);
 	Stmt* var_declaration(Token type, Visibility visibility, bool is_static, bool is_final);
-	Stmt* fun_declaration(Token return_type, Token name, Visibility visibility, bool is_static);
+	Stmt* fun_declaration(TokenType return_type, Token name, Visibility visibility, bool is_static);
 
 	Expr* expression();
 	Expr* comma_operator();
@@ -61,6 +62,7 @@ private:
 	Token consume_no_reset(TokenType type, const char* fmt, ...);
 	Token consume(TokenType type, const char *fmt, ...);
 	bool match_any_modifier();
+	bool match_constructor();
 	bool match_java_type();
 	bool match(TokenType type);
 	bool match(size_t n, ...);
@@ -74,11 +76,13 @@ private:
 	inline Token previous();
 
 private:
-	const std::vector<Token> &tokens;
+	std::vector<Token> &tokens;
 	uint32_t current = 0;
 	uint32_t loop_level = 0;
 	uint32_t func_level = 0;
 	uint32_t class_level = 0;
 	std::vector<Expr*> expr_freelist;
 	std::vector<Stmt*> stmt_freelist;
+public:
+	std::set<std::string> class_names;
 };

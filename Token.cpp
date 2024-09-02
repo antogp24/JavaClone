@@ -89,6 +89,16 @@ const char* get_token_type_name(TokenType type) {
 	return nullptr;
 }
 
+Token make__init__token(Token peeked) {
+	Token result = Token();
+	result.type = TokenType::identifier;
+	result.lexeme = (char*)"__init__";
+	result.line = peeked.line;
+	result.column = peeked.column;
+	result.is__init__ = true;
+	return result;
+}
+
 Token::Token() :
 	type((TokenType)0),
 	lexeme(NULL),

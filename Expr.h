@@ -17,6 +17,7 @@ enum class ExprType {
 	logical,
 	set,
 	ternary,
+	self,
 	unary,
 	variable,
 };
@@ -178,6 +179,16 @@ struct Expr_Ternary : public Expr {
 	{}
 
 	inline ExprType get_type() override { return ExprType::ternary; }
+};
+
+struct Expr_This : public Expr {
+	std::string name;
+	uint32_t line, column;
+
+	Expr_This(std::string p_name, uint32_t p_line, uint32_t p_column):
+		name(p_name), line(p_line), column(p_column) {}
+
+	inline ExprType get_type() override { return ExprType::self; }
 };
 
 struct Expr_Unary : public Expr {

@@ -63,10 +63,11 @@ enum class TokenType : uint8_t {
 	_false, // false
 	_null,  // null
 
-	super,   // super
-	_this,   // this
-	extends, // extends
-	_class,  // class
+	super,     // super
+	_this,     // this
+	extends,   // extends
+	_abstract, // abstract
+	_class,    // class
 
 	sout, // sout
 	soutln, // soutln
@@ -86,8 +87,11 @@ enum class TokenType : uint8_t {
 	type_float,   // float
 	type_double,  // double
 
-	type_String,    // String
-	type_ArrayList, // ArrayList
+	type_String,       // String
+	type_ArrayList,    // ArrayList
+	type_user_defined, // The name of a class defined by the user.
+
+	constructor, // __init__
 
 	import,  // import
 	package, // package

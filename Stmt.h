@@ -126,10 +126,11 @@ struct Stmt_Var : public Stmt {
 
 struct Stmt_Class : public Stmt {
 	const Token name;
+	const bool is_abstract;
 	std::vector<Stmt_Var*> attributes = {};
 	std::vector<Stmt_Function*> methods = {};
 
-	Stmt_Class(const Token p_name): name(p_name) {}
+	Stmt_Class(const Token p_name, const bool p_is_abstract): name(p_name), is_abstract(p_is_abstract) {}
 
 	inline StmtType get_type() override { return StmtType::Class; }
 };

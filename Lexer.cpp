@@ -16,7 +16,7 @@ Lexer::Lexer(char* src, uint64_t len): source({ src, len })
 
 Lexer::~Lexer() {
 	for (auto& token : tokens) {
-		if (token.lexeme != NULL) {
+		if (token.lexeme != NULL && !token.is__init__) {
 			free(token.lexeme);
 			token.lexeme = NULL;
 		}
@@ -37,7 +37,7 @@ void Lexer::print_tokens() {
 	printf("}\n");
 }
 
-const std::vector<Token>& Lexer::scan() { 
+std::vector<Token>& Lexer::scan() { 
 	while (current < source.len) {
 		start = current;
 		scan_token();

@@ -3,6 +3,7 @@
 #include "TokenType.h"
 #include <utility>
 #include <string>
+#include <set>
 
 enum class JavaType : uint8_t {
 	none = 0,
@@ -15,6 +16,7 @@ enum class JavaType : uint8_t {
 	_float,
 	_double,
 	_null,
+	UserDefined,
 	String,
 	Function,
 	Instance,
@@ -57,6 +59,7 @@ const char* java_type_cstring(JavaType type);
 bool is_java_type_number(JavaType type);
 bool is_java_type_primitive(JavaType type);
 bool is_token_type_number(TokenType type);
+bool is_token_type_modifier(TokenType type);
 bool is_token_type_java_type(TokenType type);
 void java_object_print(const JavaObject& object);
 JavaType java_get_smaller_type(const JavaObject& lhs, const JavaObject& rhs);

@@ -14,13 +14,28 @@ CallableType JavaFunction::get_type() {
 	return CallableType::UserDefined;
 }
 
+JavaFunction *JavaFunction::bind(JavaInstance *instance) {
+	Environment* env = DBG_new Environment(closure);
+	env->define("this", 0, 0, JavaType::Instance, JavaVariable{
+		.object = {
+			JavaType::Instance,
+			JavaValue{ .instance = instance },
+		},
+		.visibility = Visibility::Public,
+		.is_static = false,
+		.is_final = false,
+		.is_uninitialized = false,
+	});
+	return DBG_new JavaFunction(this, env);
+}
+
 int JavaFunction::arity() {
 	return (int)declaration_params->size();
 }
 
 JavaObject JavaFunction::call(Interpreter* interpreter, uint32_t line, uint32_t column, std::vector<ArgumentInfo> arguments) {
 	Environment* previous = interpreter->environment;
-	Environment* environment = DBG_new Environment(interpreter->globals);
+	Environment* environment = DBG_new Environment(this->closure);
 
 	for (int i = 0; i < arity(); i++) {
 		const JavaTypeInfo &decl = declaration_params->at(i).first;
@@ -41,27 +56,10 @@ JavaObject JavaFunction::call(Interpreter* interpreter, uint32_t line, uint32_t 
 
 		JavaObject r = retrn.value;
 		if (r.type == JavaType::_void) return r;
+		auto casted = try_cast(to_string(), line, column, return_type, r);
+		r = casted.first;
+		r.is_null = casted.second;
 
-		#define case_cast(T)                     \
-			case JavaType::T: {                  \
-				r.value.T = java_cast_to##T(r);  \
-				r.type = return_type;            \
-			} break;
-
-		if (return_type != r.type && is_java_type_number(return_type) && is_java_type_number(r.type)) {
-			switch (return_type) {
-				case_cast(_byte)
-				case_cast(_char)
-				case_cast(_int)
-				case_cast(_long)
-				case_cast(_float)
-				case_cast(_double)
-			}
-		}
-		else if (return_type != r.type) {
-			throw JAVA_RUNTIME_ERR_VA(declaration_name, line, column, "Return type '%s' doesn't match with '%s'.", java_type_cstring(return_type), java_type_cstring(r.type));
-		}
-		#undef case_cast
 		return r;
 	}
 	if (return_type == JavaType::_void) return { JavaType::_void, JavaValue{} };

@@ -66,7 +66,7 @@ static void run_file(char *name) {
 	Interpreter interpreter = {};
 
 	Lexer lexer(src, len);
-	const std::vector<Token> &tokens = lexer.scan();
+	std::vector<Token> &tokens = lexer.scan();
 
 	Parser parser(tokens);
 	std::vector<Stmt*>* statements = parser.parse_statements();
@@ -76,6 +76,7 @@ static void run_file(char *name) {
 		exit(1);
 	}
 
+	interpreter.add_class_names(parser.class_names);
 	interpreter.interpret(statements);
 	parser.statements_free(statements);
 
@@ -101,7 +102,7 @@ static void run_repl() {
 		std::string src(prompt);
 
 		Lexer lexer((char*)src.c_str(), len);
-		const std::vector<Token> &tokens = lexer.scan();
+		std::vector<Token> &tokens = lexer.scan();
 		if (!JavaError::had_error && REPL) lexer.print_tokens();
 
 		if (JavaError::had_error) { continue; }

@@ -12,21 +12,28 @@
 	#include <crtdbg.h>
 #endif
 
-std::pair<JavaObject, bool> try_cast(const std::string& name, uint32_t line, uint32_t column, JavaType type, JavaObject value) {
+std::pair<JavaObject, bool> try_cast(const std::string& name, uint32_t line, uint32_t column, JavaType type, JavaObject obj) {
 	JavaObject result = { type, JavaValue{} };
 
-	if (type == value.type) {
-		return { value, false };
+	if (type == obj.type) {
+		return { obj, false };
 	}
-	else if (value.type != JavaType::_null) {
+	else if (obj.type != JavaType::_null) {
 		switch (type) {
-			case JavaType::_byte: result.value._byte = java_cast_to_byte(value); break;
-			case JavaType::_char: result.value._char = java_cast_to_char(value); break;
-			case JavaType::_int: result.value._int = java_cast_to_int(value); break;
-			case JavaType::_long: result.value._long = java_cast_to_long(value); break;
-			case JavaType::_float: result.value._float = java_cast_to_float(value); break;
-			case JavaType::_double: result.value._double = java_cast_to_double(value); break;
-			default: throw JAVA_RUNTIME_ERR_VA(name, line, column, "Can't implicitly cast '%s' to '%s'.", java_type_cstring(value.type), java_type_cstring(type));
+			case JavaType::_byte: result.value._byte = java_cast_to_byte(obj); break;
+			case JavaType::_char: result.value._char = java_cast_to_char(obj); break;
+			case JavaType::_int: result.value._int = java_cast_to_int(obj); break;
+			case JavaType::_long: result.value._long = java_cast_to_long(obj); break;
+			case JavaType::_float: result.value._float = java_cast_to_float(obj); break;
+			case JavaType::_double: result.value._double = java_cast_to_double(obj); break;
+			case JavaType::UserDefined: {
+				if (obj.type != JavaType::Instance) {
+					throw JAVA_RUNTIME_ERR(name, line, column, "User defined types are incompatible with anything other than themselves.");
+				}
+				result.type = JavaType::Instance;
+				result.value.instance = obj.value.instance;
+			} break;
+			default: throw JAVA_RUNTIME_ERR_VA(name, line, column, "Can't implicitly cast '%s' to '%s'.", java_type_cstring(obj.type), java_type_cstring(type));
 		}
 		return { result, false };
 	}
@@ -62,6 +69,15 @@ bool is_token_type_number(TokenType type) {
 	return is_java_type_number(token_type_to_java_type(type));
 }
 
+bool is_token_type_modifier(TokenType type) {
+	switch (type) {
+		case TokenType::_private: return true;
+		case TokenType::_protected: return true;
+		case TokenType::_public: return true;
+		default: return false;
+	}
+}
+
 JavaType token_type_to_java_type(TokenType type) {
 	switch (type) {
 		case TokenType::_null: return JavaType::_null;
@@ -74,6 +90,7 @@ JavaType token_type_to_java_type(TokenType type) {
 		case TokenType::type_float: return JavaType::_float;
 		case TokenType::type_double: return JavaType::_double;
 		case TokenType::type_String: return JavaType::String;
+		case TokenType::type_user_defined: return JavaType::UserDefined;
 		default: return JavaType::none;
 	}
 }
@@ -90,6 +107,10 @@ const char* java_type_cstring(JavaType type) {
 		case JavaType::_float: return "float";
 		case JavaType::_double: return "double";
 		case JavaType::String: return "String";
+		case JavaType::Function: return "Function";
+		case JavaType::Instance: return "Instance";
+		case JavaType::Class: return "Class";
+		case JavaType::UserDefined: return "UserDefined";
 		default: return "None";
 	}
 }

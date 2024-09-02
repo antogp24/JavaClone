@@ -19,7 +19,7 @@ public:
 	~Lexer();
 
 	void print_tokens();
-	const std::vector<Token>& scan();
+	std::vector<Token>& scan();
 
 private:
 	const std::unordered_map<std::string_view, TokenType> keywords = {
@@ -39,11 +39,13 @@ private:
 		{ "final", TokenType::_final },
 		{ "static", TokenType::_static },
 		{ "extends", TokenType::extends },
+		{ "abstract", TokenType::_abstract },
 		{ "class", TokenType::_class },
 		{ "sout", TokenType::sout },
 		{ "soutln", TokenType::soutln },
 		{ "super", TokenType::super },
 		{ "this", TokenType::_this },
+		{ "__init__", TokenType::constructor },
 		{ "void", TokenType::type_void },
 		{ "boolean", TokenType::type_boolean },
 		{ "byte", TokenType::type_byte },

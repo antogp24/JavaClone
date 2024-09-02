@@ -86,6 +86,11 @@ void expr_free(Expr* _expr) {
 			delete expr;
 		} break;
 
+		case ExprType::self: {
+			Expr_This* expr = dynamic_cast<Expr_This*>(_expr);
+			delete expr;
+		} break;
+
 		case ExprType::unary: {
 			Expr_Unary* expr = dynamic_cast<Expr_Unary*>(_expr);
 			expr_free((Expr*)expr->right);

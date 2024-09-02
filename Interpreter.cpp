@@ -26,12 +26,22 @@ Interpreter::Interpreter() {
 
 	strings_arena = arena_make();
 	instances = {};
+	gen = std::mt19937(std::chrono::system_clock::now().time_since_epoch().count());
 
 	auto cast_to_double = [](JavaObject object, const std::string &name, uint32_t line, uint32_t column) {
 		switch (object.type) {
 			case JavaType::_byte: case JavaType::_char: case JavaType::_int: case JavaType::_long:
 			case JavaType::_float:  return java_cast_to_double(object);
 			case JavaType::_double: return object.value._double; break;
+			default: throw JAVA_RUNTIME_ERR(name, line, column, "Expected a number as an argument.");
+		}
+	};
+
+	auto cast_to_int = [](JavaObject object, const std::string &name, uint32_t line, uint32_t column) {
+		switch (object.type) {
+			case JavaType::_byte: case JavaType::_char: case JavaType::_long: case JavaType::_float:
+			case JavaType::_double: return java_cast_to_int(object);
+			case JavaType::_int:    return object.value._int; break;
 			default: throw JAVA_RUNTIME_ERR(name, line, column, "Expected a number as an argument.");
 		}
 	};
@@ -44,6 +54,17 @@ Interpreter::Interpreter() {
 			return JavaObject{ JavaType::_long, JavaValue{ ._long = result } };
 		},
 		[]() { return "<native_fn clock>"; });
+
+	globals->define_native_function("randint",
+		[]() { return 2; },
+		[cast_to_int](void* interpreter, uint32_t line, uint32_t column, std::vector<ArgumentInfo> args) {
+			Java_int a = cast_to_int(args[0].object, "randint", line, column);
+			Java_int b = cast_to_int(args[1].object, "randint", line, column);
+			std::uniform_int_distribution<> dist(a, b);
+			int random_number = dist(((Interpreter*)interpreter)->gen);
+			return JavaObject{ JavaType::_int, JavaValue{ ._int = random_number }};
+		},
+		[]() { return "<native_fn randint>"; });
 
 	globals->define_native_function("sqrt",
 		[]() { return 1; },
@@ -121,6 +142,10 @@ Interpreter::~Interpreter() {
 				JavaCallable* callable = (JavaCallable*)variable.object.value.function;
 				assert(callable->get_type() == CallableType::UserDefined);
 				JavaFunction* userfn = dynamic_cast<JavaFunction*>(callable);
+				if (userfn->closure != nullptr && userfn->closure->values.contains("this")) {
+					delete userfn->closure;
+					userfn->closure = nullptr;
+				}
 				delete userfn;
 			}
 		}
@@ -138,6 +163,12 @@ void Interpreter::interpret(std::vector<Stmt*>* statements) {
 	}
 	catch (JavaRuntimeError error) {
 		JavaError::runtime_error(error);
+	}
+}
+
+void Interpreter::add_class_names(const std::set<std::string>& class_names) {
+	for (const std::string &name : class_names) {
+		this->class_names.insert(name);
 	}
 }
 
@@ -202,6 +233,7 @@ void Interpreter::execute_statement(Stmt* statement) {
 				std::string(stmt->name.lexeme),
 				stmt->name.line,
 				stmt->name.column,
+				stmt->is_abstract,
 				stmt->attributes,
 				stmt->methods,
 			};
@@ -231,7 +263,7 @@ void Interpreter::execute_statement(Stmt* statement) {
 
 		case StmtType::Function: {
 			Stmt_Function* stmt = dynamic_cast<Stmt_Function*>(statement);
-			void* fn = DBG_new JavaFunction(stmt);
+			void* fn = DBG_new JavaFunction(stmt, this->globals);
 			JavaVariable function = {
 				.object = {
 					JavaType::Function,
@@ -659,6 +691,11 @@ JavaObject Interpreter::evaluate(Expr* expression) {
 			return evaluate((Expr*)expr->otherwise);
 		} break;
 
+		case ExprType::self: {
+			Expr_This* expr = dynamic_cast<Expr_This*>(expression);
+			return environment->get(expr->name, expr->line, expr->column);
+		} break;
+
 		case ExprType::logical: {
 			return evaluate_logical(expression);
 		} break;
@@ -692,7 +729,7 @@ JavaObject Interpreter::evaluate(Expr* expression) {
 
 		case ExprType::set: {
 			Expr_Set* expr = dynamic_cast<Expr_Set*>(expression);
-			JavaObject lhs = evaluate((Expr*)expr->lhs);
+			JavaObject lhs = evaluate((Expr*)expr->lhs->object);
 			if (lhs.type != JavaType::Instance) {
 				throw JAVA_RUNTIME_ERR(expr->rhs_name, expr->line, expr->column, "Only instances have fields.");
 			}
