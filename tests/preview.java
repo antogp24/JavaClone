@@ -45,7 +45,7 @@ abstract class Math {
 }
 
 // Printing an identity matrix.
-print_identity_matrix(4, 4);
+print_identity_matrix(randint(2, 4), randint(2, 4));
 
 // Printing greatest common divisor, and lowest common multiple of 105 and 30.
 sout("gcd(105, 30): ");
@@ -90,6 +90,14 @@ class Vector2 {
     public static Vector2 diagonal(double a) {
         return Vector2(a, a);
     }
+
+    public boolean isPerpendicular(Vector2 b) {
+        return this.cross(b) == 0;
+    }
+
+    public double cross(Vector2 b) {
+        return this.x * b.x + this.y * b.y;
+    }
     
     public Vector2 add(Vector2 b) {
         return Vector2(this.x + b.x, this.y + b.y);
@@ -106,6 +114,14 @@ class Vector2 {
     public void println() {
         sout(this); sout(": Vector2{"); sout(this.x); sout(", "); sout(this.y); soutln("}");    
     }
+
+    public void print_simple() {
+        sout("{x:");
+        sout(this.x);
+        sout(",y:");
+        sout(this.y);
+        sout("}");
+    }
 }
 
 // Testing classes and instances.
@@ -114,8 +130,21 @@ Vector2 v2 = v1;
 
 v1.println();
 v2.println();
-v1.sub(Vector2.diagonal(10))).println();
+
+v1.sub(Vector2.diagonal(10)).println();
 Vector2.diagonal(500).println();
 
 sout("The length of the vector is ");
 soutln(v1.getLength());
+
+{
+    Vector2 a = Vector2(1, 1);
+    Vector2 b = Vector2(1, -1);
+    boolean p = a.isPerpendicular(b);
+    sout("Is ");
+    a.print_simple();
+    sout(" perpendicular to ");
+    b.print_simple();
+    sout(": ");
+    soutln(p ? "yes" : "no");
+}
